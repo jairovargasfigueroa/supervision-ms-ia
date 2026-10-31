@@ -111,4 +111,20 @@ Una corrida que se cortó sin terminar queda `EN_CURSO`; la siguiente, que ya to
 
 ## `ia_db` (MongoDB)
 
-En la 401 solo se crea la conexión (`IA_MONGO_URL`, `IA_MONGO_DB`) y el registro de índices. Las colecciones las agregan la 402 (`prediccion`) y la 403 (`consumo_atipico`), y la capa 5 las de los agentes.
+Conexión con `IA_MONGO_URL` e `IA_MONGO_DB`; cada módulo registra sus índices y `ia-api` e `ia-worker` los aseguran al arrancar. La 403 agrega `consumo_atipico` y la capa 5 las de los agentes.
+
+### prediccion (402)
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | ObjectId | |
+| clave | string | único (`ux_prediccion_clave`): `{obraId}:{eventoId}`, `{obraId}:diario:{AAAA-MM-DD}` o `{obraId}:carga:{cargaId}` (idempotencia: se inserta con `$setOnInsert`) |
+| obra_id | string | índice (`obra_id`, `calculada_en` descendente) |
+| riesgo_retraso | double | probabilidad 0 a 1; null si `SIN_DATOS` |
+| nivel | string | `BAJO`, `MEDIO`, `ALTO`, `SIN_DATOS` |
+| factores | arreglo de `{ variable, descripcion, peso }` | hasta 3 |
+| variables | objeto | valores usados (para auditar) |
+| version_modelo | string | `rr-1.0.0` |
+| motivo | string | `PLANILLA_APROBADA`, `PLANILLA_OBSERVADA`, `CONTRATO_REGISTRADO`, `CONSUMO_ATIPICO` (403), `CARGA_INICIAL` (401), `DIARIO` |
+| calculada_en | date | |
+
+La 402 escribe también `rpt_obra_resumen.riesgo_retraso` y `nivel_riesgo`.

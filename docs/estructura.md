@@ -4,7 +4,7 @@ Obligatorio para todo el código de este servicio. Si algo no encaja, propón el
 
 ## Librerías
 
-Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (`xgboost`, `scikit-learn`, `pandas`, `numpy`, `joblib`) se agrega en la 402 y la 403. No se agregan otras librerías para lo mismo.
+Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. No se agregan otras librerías para lo mismo.
 
 - SQLAlchemy se usa **sin ORM** (tablas de Core y `AsyncConnection`): las proyecciones son *upserts* (`INSERT … ON CONFLICT`) y bloqueos (`SELECT … FOR UPDATE`) explícitos.
 - Montos y porcentajes con `decimal.Decimal`, nunca `float`; redondeo «mitad hacia arriba» al final (`ia.reportes.dominio.indicadores.redondear`).
@@ -61,9 +61,26 @@ src/ia/
                                   un reintento), FuenteObrasRest, FuenteMaterialesRest, FuenteFinanzasRest
       programador.py              apscheduler: 00:20 cobros vencidos, 00:30 plazo (America/La_Paz)
       web.py                      APIRouter: GET /reportes/estado (admin)
-  riesgo/                         (402) módulo hermano, misma división
+  riesgo/                         (402) riesgo de retraso
+    dominio/
+      variables.py                calcular_variables (misma función que el generador), niveles, factores y sus textos
+    aplicacion/
+      puertos.py                  ModeloRiesgo, AlmacenPredicciones, FuenteRiesgo, ContadorAtipicos, VisibilidadObras
+      prediccion.py               calcular_prediccion (SIN_DATOS o probabilidad, nivel y factores)
+      recalcular.py               ServicioRiesgo.recalcular_obra (pública: eventos, diario, carga inicial y 403), clave_evento
+      consultas.py                ConsultasRiesgo (GET de predicciones y del modelo)
+    infraestructura/
+      modelo_xgboost.py           cargar_modelo (actual.txt o IA_MODELO_RIESGO_VERSION), predicción con pred_contribs
+      predicciones_mongo.py       ia_db.prediccion ($setOnInsert por clave; índices registrados)
+      fuente_sql.py               lectura de rpt_* para las variables, rpt_obra_resumen.riesgo_*, visibilidad, consumo_atipico
+      disparadores.py             pasos posteriores de PlanillaAprobada/PlanillaObservada/ContratoRegistrado y tarea 01:00
+      componer.py                 crear_servicio_riesgo (worker y carga inicial)
+      web.py                      GET /predicciones, GET /obras/{obraId}/prediccion, GET /modelos/riesgo-retraso
   atipicos/                       (403) módulo hermano, misma división
-tests/                            espejo de src/ia; las de PostgreSQL real llevan la marca «integracion»
+ml/riesgo/                        (402) generar.py, entrenar.py, parametros.yaml, README.md (formato del CSV real),
+                                  exploracion.ipynb; datos/ no se versiona
+modelos/riesgo_retraso/           actual.txt y rr-X.Y.Z/ (modelo.ubj, variables.json, metricas.json, parametros.yaml)
+tests/                            espejo de src/ia (y tests/ml); las de PostgreSQL o MongoDB reales llevan «integracion»
 ```
 
 ## Cómo se agrega un módulo hermano (402, 403)

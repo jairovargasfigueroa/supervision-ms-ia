@@ -57,6 +57,13 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 
 - `GET /reportes/estado` (`admin`): filas por tabla, último evento aplicado de cada tipo y la última carga inicial.
 
+## Qué hace (402): riesgo de retraso
+
+- Modelo XGBoost (`modelos/riesgo_retraso/`, versión de `actual.txt` o `IA_MODELO_RIESGO_VERSION`; carpeta `IA_MODELOS_DIR`) que da la probabilidad de terminar después de `plazo_dias × 1,10`, con nivel `BAJO` < 0,30 ≤ `MEDIO` < 0,60 ≤ `ALTO` y hasta 3 factores (`pred_contribs`). `SIN_DATOS` si la obra no está `EN_EJECUCION` o lleva menos de 5 % del plazo. Sin modelo, no se calcula (se registra el error).
+- Variables: `ia.riesgo.dominio.variables.calcular_variables`, la misma función del generador sintético (`ml/riesgo/`). Se leen de `reportes_db` y de `ia_db.consumo_atipico` (403; 0 mientras esté vacía).
+- Recalcula (función pública `ServicioRiesgo.recalcular_obra(obra_id, motivo, clave)`): después de `PlanillaAprobada`, `PlanillaObservada` y `ContratoRegistrado` (pasos posteriores del consumidor; un fallo se registra y no reintenta el evento), al terminar `ia-carga-inicial` (todas las obras, `CARGA_INICIAL`) y a las 01:00 de La Paz (obras `EN_EJECUCION`, `DIARIO`). La 403 la llama con `CONSUMO_ATIPICO`.
+- Guarda cada cálculo en `ia_db.prediccion` (idempotente por `clave`) y actualiza `rpt_obra_resumen.riesgo_retraso` y `nivel_riesgo`.
+
 ## Autenticación y visibilidad
 
 - Toda ruta salvo `/salud` exige un token de Keycloak válido (firma por JWKS, vencimiento, emisor `IA_KEYCLOAK_ISSUER`, audiencia `plataforma-api`): sin él, `401 NO_AUTENTICADO`. Si Keycloak no responde al pedir el JWKS: `503 SERVICIO_NO_DISPONIBLE`.
