@@ -23,6 +23,10 @@ class Configuracion(BaseSettings):
     audiencia: str = "plataforma-api"
     zona_horaria: str = "America/La_Paz"
 
+    # Modelos versionados (402): carpeta `modelos/` del repositorio; versión de `actual.txt` si no se indica.
+    modelos_dir: str = "modelos"
+    modelo_riesgo_version: str | None = None
+
     obras_url: str = "http://localhost:8081"
     materiales_url: str = "http://localhost:8082"
     finanzas_url: str = "http://localhost:8083"

@@ -75,6 +75,8 @@ PLAZO_MINIMO_PCT: Final = 5.0
 # Factores: hasta 3 variables con contribución positiva mayor a 0,05 en la escala del modelo.
 MAXIMO_FACTORES: Final = 3
 CONTRIBUCION_MINIMA: Final = 0.05
+# Conteos que con valor 0 no describen un problema («Hace 0 meses…»): no se muestran como factor.
+CONTEOS: Final = frozenset({"meses_sin_planilla", "planillas_observadas", "atipicos_90d", "supera_stock_90d"})
 
 
 @dataclass(frozen=True)
@@ -151,12 +153,15 @@ def nivel(probabilidad: float) -> str:
 
 
 def elegir_factores(variables: Mapping[str, float], contribuciones: Mapping[str, float]) -> list[Factor]:
-    """Las variables que más suben el riesgo (contribución > 0,05), de mayor a menor, como mucho 3."""
+    """Las variables que más suben el riesgo (contribución > 0,05), de mayor a menor, como mucho 3. Un conteo en 0
+    (`CONTEOS`) no se muestra: su texto («Hace 0 meses…») no describiría ningún problema."""
     positivas = sorted(
         (
             (nombre, peso)
             for nombre, peso in contribuciones.items()
-            if nombre in VARIABLES and peso > CONTRIBUCION_MINIMA
+            if nombre in VARIABLES
+            and peso > CONTRIBUCION_MINIMA
+            and not (nombre in CONTEOS and round(variables[nombre]) == 0)
         ),
         key=lambda par: par[1],
         reverse=True,

@@ -8,7 +8,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] `riesgo/dominio/variables.py`: `calcular_variables(estado_obra, hoy)`, textos de factores y niveles; pruebas con casos fijos
 - [x] Generador `ml/riesgo/generar.py` con `parametros.yaml` y semilla 2026; pruebas de reproducibilidad y proporción de retrasadas
 - [x] `ml/riesgo/entrenar.py` (`--fuente sintetica` y `--fuente real --archivo`): división por obra, búsqueda de hiperparámetros en CPU (`tree_method = "hist"`), línea base de la regla, métricas mínimas y artefactos en `modelos/riesgo_retraso/rr-1.0.0/`; formato del CSV real en `ml/riesgo/README.md`; entrenar y versionar `rr-1.0.0` y anotar en el README cuánto tardó (menos de un minuto)
-- [ ] Carga del modelo y predicción con factores (`pred_contribs`); colección `prediccion` con índice único por `clave`; pruebas
+- [x] Carga del modelo y predicción con factores (`pred_contribs`); colección `prediccion` con índice único por `clave`; pruebas
 - [ ] Disparadores en el worker (tras `PlanillaAprobada`, `PlanillaObservada`, `ContratoRegistrado`), predicción de todas las obras al final de la carga inicial (`CARGA_INICIAL`) y tarea diaria de la 01:00; actualización de `rpt_obra_resumen`; pruebas
 - [ ] Endpoints `GET /predicciones`, `GET /obras/{obraId}/prediccion` (con `SIN_DATOS` para obras visibles sin predicción) y `GET /modelos/riesgo-retraso` (`datos` `SINTETICOS` o `REALES`) con visibilidad y errores; pruebas
 - [ ] Notebook `ml/riesgo/exploracion.ipynb` con la curva ROC y la importancia de variables para el documento

@@ -132,3 +132,10 @@ def test_textos_de_factores() -> None:
     assert texto_factor("ritmo_requerido", 12.68) == "Para terminar a tiempo se necesitan 12,7 puntos por mes"
     for variable in VARIABLES:
         assert texto_factor(variable, 2.0)
+
+
+def test_un_conteo_en_cero_no_es_factor() -> None:
+    v = calcular_variables(_estado(planillas_aprobadas=(PlanillaAprobadaObra("2026-10", 5.0),)), HOY)
+    assert v["meses_sin_planilla"] == 0
+    factores = elegir_factores(v, {"meses_sin_planilla": 1.6, "planillas_observadas": 0.9, "plazo_pct": 0.8})
+    assert [f.variable for f in factores] == ["plazo_pct"]
