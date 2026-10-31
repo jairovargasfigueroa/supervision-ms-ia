@@ -6,7 +6,15 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
 
-from ia.reportes.aplicacion.lecturas import MovimientoLeido, ObraLeida, PlanillaAprobadaLeida
+from ia.reportes.aplicacion.lecturas import (
+    CobroCargado,
+    MovimientoLeido,
+    ObraCargada,
+    ObraLeida,
+    PlanillaAprobadaLeida,
+    PlanillaCargada,
+    PlanillaResumenCargada,
+)
 
 # Lo que devuelve la base.
 
@@ -59,6 +67,22 @@ class PlazoObra:
     plazo_dias: int | None
 
 
+@dataclass(frozen=True)
+class FilaPlanilla:
+    """Planilla que la carga inicial inserta solo si no existe."""
+
+    planilla_id: str
+    obra_id: str
+    estado: str
+    periodo: str | None
+    neto: Decimal | None
+    monto_periodo: Decimal | None
+    avance_periodo_pct: Decimal | None
+    veces_observada: int
+    ultimo_motivo: str | None
+    cargada_en: datetime
+
+
 class RepositorioReportes(Protocol):
     """Operaciones sobre `reportes_db` dentro de una transacción abierta. Cada escritura es idempotente por fila."""
 
@@ -97,6 +121,10 @@ class RepositorioReportes(Protocol):
         """`OBSERVADA` (si no estaba `APROBADA`), `veces_observada + 1`, último motivo y origen."""
         ...
 
+    async def insertar_planilla_si_no_existe(self, fila: FilaPlanilla, ahora: datetime) -> bool:
+        """`ON CONFLICT DO NOTHING` (lo que ya escribió un evento se respeta). `True` si insertó."""
+        ...
+
     async def montos_aprobados(self, obra_id: str) -> list[Decimal]:
         """`monto_periodo` de las planillas `APROBADA` de la obra."""
         ...
@@ -128,8 +156,70 @@ class RepositorioReportes(Protocol):
         ahora: datetime,
     ) -> None: ...
 
+    # carga_inicial
+    async def marcar_cargas_cortadas(self, ahora: datetime) -> int:
+        """Las corridas que quedaron `EN_CURSO` (proceso detenido) pasan a `FALLIDA`."""
+        ...
+
+    async def iniciar_carga(self, carga_id: str, ahora: datetime) -> None: ...
+
+    async def terminar_carga(
+        self, carga_id: str, estado: str, obras: int, filas: dict[str, int], error: str | None, ahora: datetime
+    ) -> None: ...
+
 
 class BaseReportes(Protocol):
     def transaccion(self) -> AbstractAsyncContextManager[RepositorioReportes]:
         """Abre una transacción; se confirma al salir sin error y se deshace si hay una excepción."""
+        ...
+
+    def bloqueo_carga(self) -> AbstractAsyncContextManager[bool]:
+        """Una sola carga inicial a la vez (`pg_try_advisory_lock`): `False` si ya la tiene otra corrida."""
+        ...
+
+
+# Servicios que lee la carga inicial (solo GET).
+
+
+class FalloServicio(Exception):
+    """El servicio no respondió, respondió con error o devolvió datos inválidos (después del reintento)."""
+
+    def __init__(self, servicio: str, causa: str) -> None:
+        super().__init__(f"{servicio}: {causa}")
+        self.servicio = servicio
+        self.causa = causa
+
+
+class FuenteObras(Protocol):
+    async def listar_obras(self) -> list[str]:
+        """Paso 2: ids de todas las obras."""
+        ...
+
+    async def obtener_obra(self, obra_id: str) -> ObraCargada:
+        """Paso 3."""
+        ...
+
+    async def listar_planillas(self, obra_id: str) -> list[PlanillaResumenCargada]:
+        """Paso 4."""
+        ...
+
+    async def obtener_planilla(self, planilla_id: str) -> PlanillaCargada:
+        """Paso 5."""
+        ...
+
+
+class FuenteMateriales(Protocol):
+    async def precios_materiales(self) -> dict[str, Decimal | None]:
+        """Paso 1: precio referencial actual de cada material del catálogo."""
+        ...
+
+    async def listar_movimientos(self, obra_id: str) -> list[MovimientoLeido]:
+        """Paso 7: todos los movimientos de la obra, sin precio (Materiales no lo guarda por movimiento); vacío si
+        Materiales responde `404 OBRA_NO_ENCONTRADA` (obra que no está en `obra_acceso`)."""
+        ...
+
+
+class FuenteFinanzas(Protocol):
+    async def listar_cobros(self, obra_id: str) -> list[CobroCargado]:
+        """Paso 6."""
         ...

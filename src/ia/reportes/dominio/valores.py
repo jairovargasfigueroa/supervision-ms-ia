@@ -22,5 +22,10 @@ TIPOS_MOVIMIENTO: Final = frozenset({INGRESO, SALIDA})
 # Zona de la obra (decisión del equipo, 401); None = sin zona.
 ZONAS: Final = frozenset({"NORTE", "SUR", "ESTE", "OESTE", "CENTRO"})
 
+# carga_inicial.estado
+CARGA_EN_CURSO: Final = "EN_CURSO"
+CARGA_TERMINADA: Final = "TERMINADA"
+CARGA_FALLIDA: Final = "FALLIDA"
+
 # Estados de la planilla en Obras que la carga inicial solo carga si tienen observación.
 ESTADOS_PLANILLA_ABIERTA: Final = frozenset({"BORRADOR", "PRESENTADA", "APROBANDO"})

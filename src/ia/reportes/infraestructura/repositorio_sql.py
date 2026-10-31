@@ -6,20 +6,40 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Label, case, func, literal_column, select, update
+from sqlalchemy import Boolean, Label, case, func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ia.reportes.aplicacion.lecturas import MovimientoLeido, ObraLeida, PlanillaAprobadaLeida
-from ia.reportes.aplicacion.puertos import CobroParcial, CobroPendiente, ObraResumen, PlanillaGuardada, PlazoObra
-from ia.reportes.dominio.valores import APROBADA, EN_EJECUCION, OBSERVADA, PENDIENTE, SIN_CONTRATO, VENCIDO
+from ia.reportes.aplicacion.puertos import (
+    CobroParcial,
+    CobroPendiente,
+    FilaPlanilla,
+    ObraResumen,
+    PlanillaGuardada,
+    PlazoObra,
+)
+from ia.reportes.dominio.valores import (
+    APROBADA,
+    CARGA_EN_CURSO,
+    CARGA_FALLIDA,
+    EN_EJECUCION,
+    OBSERVADA,
+    PENDIENTE,
+    SIN_CONTRATO,
+    VENCIDO,
+)
 from ia.reportes.infraestructura.tablas import (
+    carga_inicial,
     rpt_cobro,
     rpt_consumo_material,
     rpt_movimiento,
     rpt_obra_resumen,
     rpt_planilla,
 )
+
+# Clave fija del bloqueo de una sola carga inicial a la vez (pg_try_advisory_lock).
+CLAVE_BLOQUEO_CARGA = 401_000_001
 
 # `xmax = 0` en la fila devuelta por un upsert: la fila es nueva (se insertó, no se actualizó).
 _INSERTADA: Label[bool] = literal_column("(xmax = 0)", Boolean).label("insertada")
@@ -175,6 +195,27 @@ class RepositorioReportesSql:
         )
         await self._c.execute(consulta)
 
+    async def insertar_planilla_si_no_existe(self, fila: FilaPlanilla, ahora: datetime) -> bool:
+        resultado = await self._c.execute(
+            insert(rpt_planilla)
+            .values(
+                planilla_id=fila.planilla_id,
+                obra_id=fila.obra_id,
+                estado=fila.estado,
+                periodo=fila.periodo,
+                neto=fila.neto,
+                monto_periodo=fila.monto_periodo,
+                avance_periodo_pct=fila.avance_periodo_pct,
+                veces_observada=fila.veces_observada,
+                ultimo_motivo=fila.ultimo_motivo,
+                cargada_en=fila.cargada_en,
+                actualizado_en=ahora,
+            )
+            .on_conflict_do_nothing(index_elements=["planilla_id"])
+            .returning(rpt_planilla.c.planilla_id)
+        )
+        return resultado.first() is not None
+
     async def montos_aprobados(self, obra_id: str) -> list[Decimal]:
         t = rpt_planilla.c
         filas = await self._c.execute(
@@ -270,6 +311,35 @@ class RepositorioReportesSql:
         )
         await self._c.execute(consulta)
 
+    # carga_inicial
+
+    async def marcar_cargas_cortadas(self, ahora: datetime) -> int:
+        resultado = await self._c.execute(
+            update(carga_inicial)
+            .where(carga_inicial.c.estado == CARGA_EN_CURSO)
+            .values(
+                estado=CARGA_FALLIDA,
+                terminada_en=ahora,
+                error="La corrida se cortó sin terminar (proceso detenido).",
+            )
+            .returning(carga_inicial.c.carga_id)
+        )
+        return len(resultado.all())
+
+    async def iniciar_carga(self, carga_id: str, ahora: datetime) -> None:
+        await self._c.execute(
+            insert(carga_inicial).values(carga_id=carga_id, iniciada_en=ahora, estado=CARGA_EN_CURSO, obras=0, filas={})
+        )
+
+    async def terminar_carga(
+        self, carga_id: str, estado: str, obras: int, filas: dict[str, int], error: str | None, ahora: datetime
+    ) -> None:
+        await self._c.execute(
+            update(carga_inicial)
+            .where(carga_inicial.c.carga_id == carga_id)
+            .values(estado=estado, obras=obras, filas=filas, error=error, terminada_en=ahora)
+        )
+
 
 class BaseReportesSql:
     """`BaseReportes` sobre el motor async de `reportes_db`."""
@@ -281,6 +351,20 @@ class BaseReportesSql:
     async def transaccion(self) -> AsyncIterator[RepositorioReportesSql]:
         async with self.motor.begin() as conexion:
             yield RepositorioReportesSql(conexion)
+
+    @asynccontextmanager
+    async def bloqueo_carga(self) -> AsyncIterator[bool]:
+        """Bloqueo de sesión en una conexión propia: se libera al salir (o si el proceso muere)."""
+        async with self.motor.connect() as conexion:
+            consulta = text("SELECT pg_try_advisory_lock(:clave)")
+            tomado = bool((await conexion.execute(consulta, {"clave": CLAVE_BLOQUEO_CARGA})).scalar_one())
+            await conexion.commit()
+            try:
+                yield tomado
+            finally:
+                if tomado:
+                    await conexion.execute(text("SELECT pg_advisory_unlock(:clave)"), {"clave": CLAVE_BLOQUEO_CARGA})
+                    await conexion.commit()
 
 
 def _texto(valor: object) -> str | None:

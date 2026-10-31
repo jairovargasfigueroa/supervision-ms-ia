@@ -50,6 +50,7 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 - Token propio por *client credentials* (`ia-reportes`, rol `gerente`); pide otro cuando falta menos de 30 s para que venza. `X-Request-Id` = `carga_id` en todas las llamadas.
 - Pasos: precios del catálogo de Materiales; lista de obras; por cada obra, su detalle, planillas (y cada planilla), cobros y movimientos; con todo en memoria, **una transacción por obra** con las mismas reglas que los eventos («si no existe»). Compara el avance con el de Obras y registra una advertencia si no coincide.
 - 10 s por llamada; un reintento tras 1 s ante `5xx`, error de red o tiempo agotado. Si vuelve a fallar, la carga queda `FALLIDA` con el servicio y la obra en `error`; lo cargado queda y la siguiente corrida lo completa.
+- Planillas: `APROBADA` con monto y avance del periodo; `OBSERVADA` (y `BORRADOR`, `PRESENTADA` o `APROBANDO` con `observacion`) como la dejaría `PlanillaObservada`, sin periodo ni montos; las demás no se cargan (no llega ningún evento por ellas).
 - Aproximaciones (lo que los servicios no exponen): una planilla observada antes de la carga cuenta como máximo 1 vez (`ultimo_origen` vacío), `aprobada_en` vacía, y el precio de los movimientos anteriores es el precio actual del catálogo.
 
 ### Consulta
