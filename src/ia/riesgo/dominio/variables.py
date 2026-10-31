@@ -42,6 +42,22 @@ DESCRIPCIONES: Final[Mapping[str, str]] = {
     "log_monto": "Logaritmo del monto del contrato",
 }
 
+# Plantillas de los textos de los factores (X = valor); los textos reales los arma `texto_factor`.
+PLANTILLAS_FACTOR: Final[Mapping[str, str]] = {
+    "plazo_pct": "Ya transcurrió X % del plazo",
+    "avance_pct": "El avance es de solo X %",
+    "brecha": "El avance está X puntos por debajo del plazo transcurrido",
+    "ritmo_reciente": "El avance mensual reciente es bajo (X puntos por mes)",
+    "ritmo_requerido": "Para terminar a tiempo se necesitan X puntos por mes",
+    "relacion_ritmo": "El ritmo de avance de los últimos meses es menor al necesario para terminar a tiempo",
+    "meses_sin_planilla": "Hace X meses que no se aprueba una planilla",
+    "planillas_observadas": "Se observaron X planillas",
+    "atipicos_90d": "Hubo X consumos de material atípicos en los últimos 90 días",
+    "supera_stock_90d": "Hubo X salidas de material sin stock suficiente",
+    "plazo_dias": "El plazo de la obra es largo (X días)",
+    "log_monto": "La obra es de monto alto",
+}
+
 DIAS_POR_MES: Final = 30.44
 MESES_MINIMOS: Final = 0.5
 RELACION_MAXIMA: Final = 3.0
