@@ -128,3 +128,28 @@ Conexión con `IA_MONGO_URL` e `IA_MONGO_DB`; cada módulo registra sus índices
 | calculada_en | date | |
 
 La 402 escribe también `rpt_obra_resumen.riesgo_retraso` y `nivel_riesgo`.
+
+### consumo_atipico (403)
+
+Una `SALIDA` que el Isolation Forest marcó como atípica. La escribe `ia-worker` al aplicar `MovimientoRegistrado` (paso previo a la transacción de la 401, `$setOnInsert` por `_id`: idempotente); la revisión la cambia `ia-api` (`PUT /consumos-atipicos/{id}/revision`).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string | `movimiento_id` (ref Materiales) |
+| obra_id | string | índice `ix_consumo_atipico_obra_estado_registrado` (`obra_id`, `estado_revision`, `registrado_en` descendente) |
+| material_id | string | ref Materiales |
+| partida_id | string | ref Obras |
+| cantidad | decimal | `Decimal128` |
+| periodo | string | `AAAA-MM` |
+| registrado_en | date | de la salida |
+| puntaje | double | 0 a 1 (`−score_samples`) |
+| motivos | arreglo de string | 1 a 3 |
+| variables | objeto | valores usados por el modelo (para auditar) |
+| version_modelo | string | `ca-1.0.0` |
+| detectado_en | date | |
+| estado_revision | string | `PENDIENTE`, `NORMAL`, `CONFIRMADO` |
+| revisado_por | string | ref Keycloak (`sub`); null hasta la revisión |
+| revisado_en | date | null hasta la revisión |
+| comentario | string | null si no se escribió |
+
+El historial que usan las variables sale de `rpt_movimiento` (solo lectura: salidas con `registrado_en` anterior y otro `movimiento_id`).

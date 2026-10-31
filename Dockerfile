@@ -22,6 +22,7 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY README.md alembic.ini ./
 COPY migraciones ./migraciones
+# Modelos versionados en el repositorio (402 y 403): el servicio solo carga estos archivos.
 COPY modelos ./modelos
 COPY src ./src
 RUN uv sync --locked --no-dev

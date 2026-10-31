@@ -35,11 +35,29 @@ uv run ia-api                        # API en http://localhost:8085 (GET /salud)
 uv run ia-worker                     # consumidor de la cola «ia» y tareas programadas
 uv run ia-carga-inicial              # carga inicial (una vez, con Obras, Materiales y Finanzas levantados)
 
-uv run pytest -q                     # pruebas (las de integración levantan PostgreSQL con Testcontainers)
+uv run pytest -q                     # pruebas (las de integración levantan PostgreSQL y MongoDB con Testcontainers)
 uv run ruff check . ; uv run ruff format --check . ; uv run mypy
 ```
 
-Las pruebas de integración necesitan Docker (Testcontainers con `postgres:17-alpine`). Para usar otra base vacía en su lugar: `IA_PRUEBAS_DB_URL=postgresql+psycopg://usuario:clave@host:puerto/base_vacia`.
+Las pruebas de integración necesitan Docker (Testcontainers con `postgres:17-alpine` y `mongo:8.0`). Para usar otra base vacía en su lugar: `IA_PRUEBAS_DB_URL=postgresql+psycopg://usuario:clave@host:puerto/base_vacia` e `IA_PRUEBAS_MONGO_URL=mongodb://usuario:clave@host:puerto` (usa la base `ia_db_pruebas` y la borra en cada prueba).
+
+## Modelo de consumos atípicos (403)
+
+Isolation Forest de scikit-learn, solo con CPU. Los artefactos de cada versión van en `modelos/consumos_atipicos/<version>/` (`modelo.joblib`, `percentiles.json`, `metricas.json`, `parametros.yaml`) y `modelos/consumos_atipicos/actual.txt` dice cuál carga el worker (o `IA_MODELO_ATIPICOS_VERSION`). Sin modelo, el worker registra el error y sigue sin detectar.
+
+```powershell
+uv run python -m ml.atipicos.generar --semilla 2026                          # ml/atipicos/datos/salidas_sinteticas.csv (no se versiona)
+uv run python -m ml.atipicos.entrenar --fuente sintetica --version ca-1.0.0
+uv run python -m ml.atipicos.entrenar --fuente real --version ca-1.1.0       # requiere ≥ 500 salidas en rpt_movimiento
+```
+
+`entrenar` termina con código 1 y no cambia `actual.txt` si no se cumplen las métricas mínimas (diseño de la 403). Parámetros del generador: `ml/atipicos/parametros.yaml`.
+
+Variables: las 11 del diseño más `salidas_1h` y `salidas_3h` (salidas del mismo material en la obra en la última hora y en las últimas 3 horas, incluida esta), y `IsolationForest(n_estimators=200, contamination=0.02, max_samples=4096, random_state=2026)`. Decisión de Jairo (31/10/2026): con solo las variables del diseño y `max_samples` de 256 (el de scikit-learn) la sensibilidad era 0,53, porque las ráfagas no se distinguían de un día normal con varias salidas y las salidas de noche o en domingo casi nunca entraban en la muestra de 256 de cada árbol. Motivo nuevo: «Hubo X salidas de este material en la última hora».
+
+Métricas de `ca-1.0.0` sobre el 20 % de prueba (semilla 2026): sensibilidad 0,72 (mínimo 0,70), precisión 0,80 (mínimo 0,50), AUC-ROC 0,97 (mínimo 0,85) y 2,1 % marcadas (de 1 % a 3 %). Sensibilidad por tipo: CANTIDAD 0,81, HORARIO 0,98, RAFAGA 0,41 (la primera salida de una ráfaga no se distingue de una normal) y STOCK 0,81. Con otras semillas del generador (1 a 4) la sensibilidad va de 0,65 a 0,75: está cerca del mínimo.
+
+Tiempo medido el 31/10/2026 en la computadora del equipo (Intel Core i7-11370H, 8 hilos, sin GPU), con la semilla 2026: generar las 48 849 salidas tarda 4,8 s y entrenar (leer el CSV, ajustar, medir y guardar) 1,6 s; los dos comandos completos, con el arranque de Python y la importación de scikit-learn, 15 s (objetivo: menos de un minuto).
 
 ## Docker
 

@@ -4,7 +4,7 @@ Obligatorio para todo el código de este servicio. Si algo no encaja, propón el
 
 ## Librerías
 
-Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. No se agregan otras librerías para lo mismo.
+Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. ML (403): `scikit-learn` 1 (Isolation Forest, también en el servicio), `numpy` 2, `joblib` 1 (`modelo.joblib`) y `pyyaml` 6. No se agregan otras librerías para lo mismo.
 
 - SQLAlchemy se usa **sin ORM** (tablas de Core y `AsyncConnection`): las proyecciones son *upserts* (`INSERT … ON CONFLICT`) y bloqueos (`SELECT … FOR UPDATE`) explícitos.
 - Montos y porcentajes con `decimal.Decimal`, nunca `float`; redondeo «mitad hacia arriba» al final (`ia.reportes.dominio.indicadores.redondear`).
@@ -76,10 +76,32 @@ src/ia/
       disparadores.py             pasos posteriores de PlanillaAprobada/PlanillaObservada/ContratoRegistrado y tarea 01:00
       componer.py                 crear_servicio_riesgo (worker y carga inicial)
       web.py                      GET /predicciones, GET /obras/{obraId}/prediccion, GET /modelos/riesgo-retraso
-  atipicos/                       (403) módulo hermano, misma división
+  atipicos/                       (403) consumos de material atípicos (Isolation Forest)
+    dominio/
+      variables.py                SalidaMaterial, Historial, calcular_variables_salida() (13 variables, con salidas_1h y salidas_3h)
+      historial.py                HistorialEnMemoria, recorrer_en_orden() (generador y reentrenamiento)
+      motivos.py                  Percentiles, motivos_consumo() (1 a 3 motivos)
+      revision.py                 reglas del comentario y de los estados de la revisión
+      consumo.py · valores.py     ConsumoAtipico; estados, límites
+    aplicacion/
+      puertos.py                  ModeloAtipicos, FuenteHistorial, EventosAplicados, RepositorioAtipicos, ObrasReportes,
+                                  NotificadorRiesgo (recálculo de la 402)
+      deteccion.py                DetectarConsumoAtipico (paso previo de MovimientoRegistrado)
+      consultas.py · revisar.py   lista, resumen por obra y revisión; errores.py
+    infraestructura/
+      modelo.py                   carga de modelos/consumos_atipicos/<version>/ (joblib + percentiles.json)
+      salidas_sql.py              historial desde rpt_movimiento, inbox, salidas para reentrenar
+      obras_sql.py                visibilidad desde rpt_obra_resumen
+      repositorio_mongo.py        ia_db.consumo_atipico y su índice
+      eventos.py                  registrar_deteccion(): agrega el paso previo y el posterior del recálculo
+      riesgo.py                   RecalculoRiesgo402: NotificadorRiesgo con ServicioRiesgo.recalcular_obra
+      web.py                      APIRouter: GET /consumos-atipicos, GET /consumos-atipicos/resumen, PUT …/revision
 ml/riesgo/                        (402) generar.py, entrenar.py, parametros.yaml, README.md (formato del CSV real),
                                   exploracion.ipynb; datos/ no se versiona
 modelos/riesgo_retraso/           actual.txt y rr-X.Y.Z/ (modelo.ubj, variables.json, metricas.json, parametros.yaml)
+ml/atipicos/                      (403) generar.py + parametros.yaml (datos sintéticos), entrenar.py; datos/ no se versiona
+modelos/consumos_atipicos/        versiones del modelo (modelo.joblib, percentiles.json, metricas.json, parametros.yaml)
+                                  y actual.txt
 tests/                            espejo de src/ia (y tests/ml); las de PostgreSQL o MongoDB reales llevan «integracion»
 ```
 

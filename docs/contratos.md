@@ -52,7 +52,32 @@ Devuelve: 200 {
   "variables": [{ "nombre": "relacion_ritmo", "descripcion": "Ritmo reciente / ritmo necesario" }]
 }
 Errores: 503 MODELO_NO_DISPONIBLE · 401 · 403
+
+### GET /consumos-atipicos?obraId=&estado=&desde=&hasta= · 403
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`, `residente`
+Recibe: `obraId` opcional (sin él, todas las obras visibles); `estado` opcional (`PENDIENTE`, `NORMAL`, `CONFIRMADO`; sin él, todos); `desde`/`hasta` opcionales (fechas `AAAA-MM-DD` en La Paz, ambas incluidas, sobre `registradoEn`)
+Devuelve: 200 [{
+  "id": "uuid-del-movimiento", "movimientoId": "uuid", "obraId": "uuid", "materialId": "id", "partidaId": "uuid",
+  "cantidad": 120.0, "periodo": "2026-11", "registradoEn": "2026-11-15T02:40:00Z",
+  "puntaje": 0.71, "motivos": ["La cantidad es 4,2 veces la habitual de este material en la obra", "Se registró fuera del horario habitual (22:40)"],
+  "estadoRevision": "PENDIENTE", "revisadoPor": null, "revisadoEn": null, "comentario": null,
+  "versionModelo": "ca-1.0.0", "detectadoEn": "2026-11-15T02:40:03Z"
+}]   (máximo 200, de la más reciente a la más antigua)
+Errores: 400 DATOS_INVALIDOS (estado o fechas inválidos, o `desde` > `hasta`) · 404 OBRA_NO_ENCONTRADA (también si no la puede ver) · 401 · 403
+
+### GET /consumos-atipicos/resumen?obraIds=a,b,c · 403
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`, `residente`
+Devuelve: 200 [{ "obraId": "uuid", "pendientes": 2 }]   (solo obras visibles, en el orden pedido; las que no tienen pendientes vienen con 0)
+Errores: 400 DEMASIADAS_OBRAS (más de 100 distintas) · 401 · 403
+
+### PUT /consumos-atipicos/{id}/revision · 403
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `residente` asignado a la obra
+Recibe: { "estado": "CONFIRMADO", "comentario": "Se usó en la losa de otra obra sin registrarlo" }
+Devuelve: 200 con el consumo atípico actualizado (`revisadoPor` = `sub`, `revisadoEn`, `comentario` sin espacios a los lados)
+Errores: 400 DATOS_INVALIDOS (estado `PENDIENTE`, desconocido o falta) · 404 CONSUMO_ATIPICO_NO_ENCONTRADO (también si el residente no está asignado a su obra) · 409 REVISION_YA_REGISTRADA · 422 COMENTARIO_INVALIDO (falta en `CONFIRMADO` o fuera de 5 a 300 caracteres; `errores[]` con `campo` = `comentario` y la regla en `mensaje`) · 403 (por ejemplo `gerente`) · 401
 ```
+
+La revisión es una actualización atómica (`find_one_and_update` con `estado_revision = PENDIENTE`); si el consumo existe pero ya no está pendiente, `409`.
 
 Las consultas del riesgo leen MongoDB (`prediccion`) y `reportes_db` (visibilidad); no calculan nada en la petición.
 
@@ -74,7 +99,8 @@ La cola durable `ia` y sus enlaces están en las definiciones de RabbitMQ de `in
 - Sobre común, `version` 1. Otra versión, cuerpo que no es JSON, `datos` incompletos o un `tipo` sin manejador → directo a `plataforma.fallidos`.
 - Reintentos en la misma cola con `x-intentos`, `x-error` y `x-clave-origen`; al tercer fallo, a `plataforma.fallidos` con `x-cola-origen = ia`.
 - Campos desconocidos en `datos` se ignoran (lector tolerante).
-- Publica: nada (en la 401).
+- `MovimientoRegistrado` con `tipo = SALIDA` además se evalúa como posible consumo atípico (403), antes de la proyección.
+- Publica: nada (en la 401 ni en la 403).
 
 ## Consume (REST, solo en la carga inicial)
 

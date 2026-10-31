@@ -1,0 +1,43 @@
+fuente: sintetica
+datos: salidas_sinteticas.csv
+generador:
+  semilla: 2026
+  zona_horaria: America/La_Paz
+  obras: 60
+  materiales: 25
+  meses_por_obra: 12
+  primer_mes_inicio: 2025-01
+  meses_inicio_posibles: 12
+  materiales_por_obra: 7
+  meses_activo_material:
+  - 2
+  - 4
+  mediana_material:
+  - 2.0
+  - 200.0
+  factor_obra:
+  - 0.5
+  - 2.0
+  salidas_por_semana:
+  - 3
+  - 15
+  sigma_cantidad: 0.35
+  hora_media: 10.0
+  hora_desvio: 2.5
+  hora_minima: 7.0
+  hora_maxima: 18.0
+  prob_supera_stock: 0.01
+  anomalias:
+    proporcion: 0.02
+    cantidad_factor:
+    - 4.0
+    - 10.0
+    noche_desde: 21.0
+    noche_horas: 8.0
+    rafaga_salidas:
+    - 3
+    - 6
+    rafaga_minutos: 60
+    stock_factor:
+    - 2.0
+    - 4.0

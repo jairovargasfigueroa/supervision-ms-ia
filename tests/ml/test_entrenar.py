@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+
 from ml.riesgo import entrenar, generar
 
 RELAJADOS = {"aucRoc": 0.5, "mejoraSobreRegla": -1.0, "recallMedio": 0.0, "precisionAlto": 0.0, "brierMaximo": 1.0}

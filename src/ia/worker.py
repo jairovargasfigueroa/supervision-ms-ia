@@ -4,7 +4,11 @@ import asyncio
 import logging
 import signal
 from contextlib import suppress
+from pathlib import Path
 
+from ia.atipicos.infraestructura.eventos import registrar_deteccion
+from ia.atipicos.infraestructura.modelo import cargar_modelo_o_nada
+from ia.atipicos.infraestructura.riesgo import RecalculoRiesgo402
 from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
@@ -37,6 +41,15 @@ async def principal(config: Configuracion) -> None:
     registrar_manejadores(consumidor, motor, reloj, config.zona_horaria)
     riesgo = crear_servicio_riesgo(config, motor, mongo[config.mongo_db], reloj)
     registrar_disparadores(consumidor, riesgo)
+    registrar_deteccion(
+        consumidor,
+        motor,
+        mongo[config.mongo_db],
+        reloj,
+        cargar_modelo_o_nada(config.modelo_atipicos_version, Path(config.modelos_dir) / "consumos_atipicos"),
+        config.zona_horaria,
+        notificador=RecalculoRiesgo402(riesgo),
+    )
     await asegurar_indices_al_arrancar(mongo[config.mongo_db])
 
     programador = crear_programador(config.zona_horaria)

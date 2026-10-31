@@ -6,8 +6,8 @@
 
 | Proceso | Comando | Qué hace |
 |---|---|---|
-| `ia-api` | `uv run ia-api` | FastAPI en el puerto 8085: `GET /salud` y `GET /reportes/estado` (402, 403 y la capa 5 agregan rutas) |
-| `ia-worker` | `uv run ia-worker` | Consume la cola `ia` (prefetch 10, `ack` manual), aplica las proyecciones y corre las tareas programadas |
+| `ia-api` | `uv run ia-api` | FastAPI en el puerto 8085: `GET /salud`, `GET /reportes/estado` y los consumos atípicos de la 403 (402 y la capa 5 agregan rutas) |
+| `ia-worker` | `uv run ia-worker` | Consume la cola `ia` (prefetch 10, `ack` manual), aplica las proyecciones, evalúa las salidas (403) y corre las tareas programadas |
 | `ia-carga-inicial` | `uv run ia-carga-inicial` | Llena el modelo de lectura con lo que ya existe, por REST (solo `GET`), y termina |
 
 Los tres salen de la misma imagen (`Dockerfile`).
@@ -63,6 +63,16 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 - Variables: `ia.riesgo.dominio.variables.calcular_variables`, la misma función del generador sintético (`ml/riesgo/`). Se leen de `reportes_db` y de `ia_db.consumo_atipico` (403; 0 mientras esté vacía).
 - Recalcula (función pública `ServicioRiesgo.recalcular_obra(obra_id, motivo, clave)`): después de `PlanillaAprobada`, `PlanillaObservada` y `ContratoRegistrado` (pasos posteriores del consumidor; un fallo se registra y no reintenta el evento), al terminar `ia-carga-inicial` (todas las obras, `CARGA_INICIAL`) y a las 01:00 de La Paz (obras `EN_EJECUCION`, `DIARIO`). La 403 la llama con `CONSUMO_ATIPICO`.
 - Guarda cada cálculo en `ia_db.prediccion` (idempotente por `clave`) y actualiza `rpt_obra_resumen.riesgo_retraso` y `nivel_riesgo`.
+
+## Consumos atípicos (403)
+
+ML no supervisado: un Isolation Forest (scikit-learn, CPU) marca las `SALIDA` de material que se salen del comportamiento habitual. No usa modelo de lenguaje ni bloquea nada: deja un consumo atípico `PENDIENTE` para que una persona lo revise.
+
+- **Detección** (`ia-worker`): paso previo de `MovimientoRegistrado` (antes de la transacción de la 401). Si es `SALIDA` y el evento no está en `evento_aplicado`, lee el historial anterior de `rpt_movimiento` (sin la propia salida), calcula las 13 variables (`atipicos/dominio/variables.py`: las 11 del diseño más `salidas_1h` y `salidas_3h`, que describen las ráfagas), evalúa con el modelo y, si es atípica, guarda `ia_db.consumo_atipico` con `_id = movimientoId` y `$setOnInsert`. Los ingresos no se evalúan. Sin modelo, registra el error y la proyección sigue.
+- **Motivos**: de 1 a 3, con reglas sobre las variables y los percentiles del entrenamiento (`atipicos/dominio/motivos.py`).
+- **Revisión** (`ia-api`): `NORMAL` o `CONFIRMADO` (confirmar exige comentario de 5 a 300 caracteres), solo `admin` y el residente asignado; actualización atómica que solo cambia un consumo `PENDIENTE`.
+- **Modelo**: `ml/atipicos/generar.py` (datos sintéticos) y `ml/atipicos/entrenar.py` (`--fuente sintetica` o `--fuente real` con ≥ 500 salidas), artefactos en `modelos/consumos_atipicos/<version>/` y `actual.txt` (o `IA_MODELO_ATIPICOS_VERSION`). El servicio solo carga archivos de su propio repositorio (`modelo.joblib` usa `pickle`). Reentrenar es manual.
+- **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se llama al puerto `NotificadorRiesgo.consumo_atipico(obra_id, evento_id)`; su adaptador `RecalculoRiesgo402` (`atipicos/infraestructura/riesgo.py`) llama a `ServicioRiesgo.recalcular_obra(obra_id, motivo=CONSUMO_ATIPICO, clave={obraId}:{eventoId})`. Si falla, se registra y no se reintenta (la tarea diaria de la 402 lo corrige).
 
 ## Autenticación y visibilidad
 

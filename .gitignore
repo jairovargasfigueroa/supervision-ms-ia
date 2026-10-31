@@ -13,3 +13,6 @@ dist/
 .venv-*/
 *.egg-info/
 build/
+
+# Datos generados por ml/*/generar.py (se rearman con la semilla)
+ml/*/datos/

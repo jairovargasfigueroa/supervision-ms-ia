@@ -27,6 +27,9 @@ class Configuracion(BaseSettings):
     modelos_dir: str = "modelos"
     modelo_riesgo_version: str | None = None
 
+    # 403: versión del modelo de consumos atípicos (si falta, la de <IA_MODELOS_DIR>/consumos_atipicos/actual.txt).
+    modelo_atipicos_version: str | None = None
+
     obras_url: str = "http://localhost:8081"
     materiales_url: str = "http://localhost:8082"
     finanzas_url: str = "http://localhost:8083"

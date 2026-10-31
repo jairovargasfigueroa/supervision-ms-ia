@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ml.riesgo import generar
 
 from ia.riesgo.dominio import variables as dominio
+from ml.riesgo import generar
 
 
 def _hash(texto: str) -> str:
