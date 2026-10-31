@@ -209,3 +209,65 @@ async def test_el_historial_de_la_base_es_el_mismo_que_el_de_memoria(motor: Asyn
         # La base suma en decimal y la memoria en float: iguales salvo el último bit.
         assert desde_base.vector() == pytest.approx(en_memoria.vector(), rel=1e-9), salida.movimiento_id
         memoria.agregar(salida)
+
+
+# Paso 5: recálculo del riesgo de retraso (402) después de confirmar la transacción.
+
+
+class NotificadorDePrueba:
+    def __init__(self, falla: bool = False) -> None:
+        self.llamadas: list[tuple[str, str]] = []
+        self.falla = falla
+
+    async def recalcular(self, obra_id: str, motivo: str) -> None:
+        self.llamadas.append((obra_id, motivo))
+        if self.falla:
+            raise RuntimeError("la 402 no responde")
+
+
+def con_recalculo(motor: AsyncEngine, ia_db: Base, modelo: ModeloAtipicos, notificador: NotificadorDePrueba) -> Eventos:
+    eventos = Eventos(motor)
+    registrar_deteccion(eventos.consumidor, motor, ia_db, eventos.reloj, modelo, notificador=notificador)
+    return eventos
+
+
+async def test_un_atipico_recalcula_el_riesgo_de_la_obra_una_vez(motor: AsyncEngine, ia_db: Base) -> None:
+    notificador = NotificadorDePrueba()
+    eventos = con_recalculo(motor, ia_db, ModeloFijo(atipica=True), notificador)
+    evento_id = str(uuid.uuid4())
+    datos = movimiento()
+    await eventos.publicar("MovimientoRegistrado", datos, id_=evento_id)
+    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+    await eventos.publicar("MovimientoRegistrado", datos, id_=evento_id)  # repetido: no se aplica ni recalcula
+    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+
+
+async def test_una_salida_normal_o_un_ingreso_no_recalculan(motor: AsyncEngine, ia_db: Base) -> None:
+    notificador = NotificadorDePrueba()
+    eventos = con_recalculo(motor, ia_db, ModeloFijo(atipica=False), notificador)
+    await eventos.publicar("MovimientoRegistrado", movimiento())
+    await eventos.publicar("MovimientoRegistrado", movimiento(tipo="INGRESO"))
+    assert notificador.llamadas == []
+
+
+async def test_si_el_recalculo_falla_el_evento_queda_aplicado_sin_reintento(
+    motor: AsyncEngine, ia_db: Base, caplog: pytest.LogCaptureFixture
+) -> None:
+    notificador = NotificadorDePrueba(falla=True)
+    eventos = con_recalculo(motor, ia_db, ModeloFijo(atipica=True), notificador)
+    movimiento_id = str(uuid.uuid4())
+    await eventos.publicar("MovimientoRegistrado", movimiento(movimiento_id))
+    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+    assert eventos.canal.publicados == []
+    assert len(eventos.canal.confirmados) == 1
+    assert await fila(motor, rpt_movimiento, movimiento_id=movimiento_id)
+    assert "No se pudo recalcular el riesgo" in caplog.text
+
+
+async def test_sin_la_402_no_hay_paso_de_recalculo(motor: AsyncEngine, ia_db: Base) -> None:
+    eventos, _ = con_deteccion(motor, ia_db, ModeloFijo(atipica=True))
+    registro_movimiento = eventos.consumidor._por_tipo["MovimientoRegistrado"]
+    assert len(registro_movimiento.previos) == 1
+    assert registro_movimiento.posteriores == []
+    await eventos.publicar("MovimientoRegistrado", movimiento())
+    assert len(await documentos(ia_db)) == 1

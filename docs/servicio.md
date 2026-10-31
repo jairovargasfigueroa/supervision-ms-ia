@@ -65,7 +65,7 @@ ML no supervisado: un Isolation Forest (scikit-learn, CPU) marca las `SALIDA` de
 - **Motivos**: de 1 a 3, con reglas sobre las variables y los percentiles del entrenamiento (`atipicos/dominio/motivos.py`).
 - **Revisión** (`ia-api`): `NORMAL` o `CONFIRMADO` (confirmar exige comentario de 5 a 300 caracteres), solo `admin` y el residente asignado; actualización atómica que solo cambia un consumo `PENDIENTE`.
 - **Modelo**: `ml/atipicos/generar.py` (datos sintéticos) y `ml/atipicos/entrenar.py` (`--fuente sintetica` o `--fuente real` con ≥ 500 salidas), artefactos en `modelos/consumos_atipicos/<version>/` y `actual.txt` (o `IA_MODELO_ATIPICOS_VERSION`). El servicio solo carga archivos de su propio repositorio (`modelo.joblib` usa `pickle`). Reentrenar es manual.
-- **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se avisa al puerto `NotificadorRiesgo` (sin la 402, una implementación que no hace nada).
+- **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se llama al puerto `NotificadorRiesgo.recalcular(obra_id, "CONSUMO_ATIPICO")`; sin la 402 no se pasa ningún notificador y el paso no se registra.
 
 ## Autenticación y visibilidad
 

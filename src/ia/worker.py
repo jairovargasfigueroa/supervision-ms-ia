@@ -42,6 +42,8 @@ async def principal(config: Configuracion) -> None:
         reloj,
         cargar_modelo_o_nada(config.modelo_atipicos_version),
         config.zona_horaria,
+        # 402: pasar aquí su NotificadorRiesgo (recálculo con motivo CONSUMO_ATIPICO); sin él, el paso no existe.
+        notificador=None,
     )
     if indices_registrados():
         await asegurar_indices(mongo[config.mongo_db])

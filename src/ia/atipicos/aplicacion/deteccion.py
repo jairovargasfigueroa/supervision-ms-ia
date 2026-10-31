@@ -7,15 +7,25 @@ Corre como paso **previo** de la 401 (antes de su transacción de PostgreSQL), e
 2. evalúa con el modelo; sin modelo, registra el error y sigue sin detectar;
 3. si es atípica, guarda el consumo atípico con `_id = movimientoId` y `$setOnInsert` (idempotente).
 
-Después corre la transacción de la 401. Un evento ya aplicado (está en `evento_aplicado`) se confirma sin evaluar; un
-reintento repite los pasos 1 a 3 sin duplicar.
+Después corre la transacción de la 401 (paso 4). Un evento ya aplicado (está en `evento_aplicado`) se confirma sin
+evaluar; un reintento repite los pasos 1 a 3 sin duplicar.
+
+Paso 5, **posterior** (después de confirmar, solo si el evento se aplicó ahora): si la salida es un consumo atípico,
+pide a la 402 recalcular el riesgo de retraso de la obra (motivo `CONSUMO_ATIPICO`). Sin la 402 no hay notificador y el
+paso no existe.
 """
 
 import asyncio
 import logging
 from dataclasses import dataclass
 
-from ia.atipicos.aplicacion.puertos import EventosAplicados, FuenteHistorial, ModeloAtipicos, RepositorioAtipicos
+from ia.atipicos.aplicacion.puertos import (
+    EventosAplicados,
+    FuenteHistorial,
+    ModeloAtipicos,
+    NotificadorRiesgo,
+    RepositorioAtipicos,
+)
 from ia.atipicos.dominio.consumo import ConsumoAtipico
 from ia.atipicos.dominio.variables import SalidaMaterial, calcular_variables_salida
 from ia.comun.tiempo import Reloj
@@ -23,6 +33,9 @@ from ia.reportes.aplicacion.lecturas import MovimientoLeido
 from ia.reportes.dominio.valores import SALIDA
 
 registro = logging.getLogger("ia.atipicos")
+
+MOTIVO_RIESGO = "CONSUMO_ATIPICO"
+"""Motivo de la predicción de la 402 que dispara un consumo atípico."""
 
 
 @dataclass(frozen=True)
@@ -99,3 +112,31 @@ class DetectarConsumoAtipico:
             "" if guardada else ", ya estaba guardado",
         )
         return ResultadoDeteccion(evaluada=True, atipica=True, guardada=guardada)
+
+
+class RecalcularRiesgoTrasAtipico:
+    """Paso 5: después de confirmar la transacción de la 401, avisa a la 402 si la salida quedó como atípica."""
+
+    def __init__(self, repositorio: RepositorioAtipicos, notificador: NotificadorRiesgo) -> None:
+        self._repositorio = repositorio
+        self._notificador = notificador
+
+    async def despues_de_aplicar(self, movimiento: MovimientoLeido, aplicado: bool) -> bool:
+        """`True` si pidió el recálculo.
+
+        Si el recálculo falla, se registra y no se reintenta el mensaje: el evento ya quedó aplicado (un reintento no
+        volvería a llegar a este paso) y la tarea diaria de la 402 recalcula todas las obras.
+        """
+        if not aplicado or movimiento.tipo != SALIDA:
+            return False
+        consumo = await self._repositorio.obtener(movimiento.movimiento_id)
+        if consumo is None:
+            return False
+        try:
+            await self._notificador.recalcular(consumo.obra_id, MOTIVO_RIESGO)
+        except Exception:
+            registro.exception(
+                "No se pudo recalcular el riesgo de la obra %s tras un consumo atípico.", consumo.obra_id
+            )
+            return False
+        return True

@@ -71,7 +71,7 @@ src/ia/
       consumo.py · valores.py     ConsumoAtipico; estados, límites
     aplicacion/
       puertos.py                  ModeloAtipicos, FuenteHistorial, EventosAplicados, RepositorioAtipicos, ObrasReportes,
-                                  NotificadorRiesgo (402; por defecto no hace nada)
+                                  NotificadorRiesgo (402; sin él no hay paso posterior)
       deteccion.py                DetectarConsumoAtipico (paso previo de MovimientoRegistrado)
       consultas.py · revisar.py   lista, resumen por obra y revisión; errores.py
     infraestructura/

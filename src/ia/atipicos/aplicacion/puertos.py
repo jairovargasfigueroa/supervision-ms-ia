@@ -86,3 +86,13 @@ class ObrasReportes(Protocol):
         ...
 
     async def obras_del_residente(self, residente_id: str) -> list[str]: ...
+
+
+class NotificadorRiesgo(Protocol):
+    """Recalcula el riesgo de retraso de una obra (402) después de detectar un consumo atípico en ella.
+
+    Lo implementa la 402 (su predicción con motivo `CONSUMO_ATIPICO`). Sin la 402 no se registra ningún notificador y
+    el paso no existe.
+    """
+
+    async def recalcular(self, obra_id: str, motivo: str) -> None: ...
