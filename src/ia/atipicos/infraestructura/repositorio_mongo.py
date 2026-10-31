@@ -1,14 +1,16 @@
 """`ia_db.consumo_atipico` (403, diseño «`ia_db.consumo_atipico`»)."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from bson.decimal128 import Decimal128
+from pymongo import DESCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
 from ia.atipicos.dominio.consumo import ConsumoAtipico
-from ia.atipicos.dominio.valores import CONFIRMADO, NORMAL
+from ia.atipicos.dominio.valores import CONFIRMADO, NORMAL, PENDIENTE
 from ia.comun.mongo import IndiceMongo, registrar_indice
 
 COLECCION = "consumo_atipico"
@@ -37,6 +39,55 @@ class RepositorioAtipicosMongo:
 
     async def obtener(self, consumo_id: str) -> ConsumoAtipico | None:
         documento = await self._coleccion.find_one({"_id": consumo_id})
+        return None if documento is None else de_documento(documento)
+
+    async def listar(
+        self,
+        obra_ids: Sequence[str] | None,
+        estado: str | None,
+        desde: datetime | None,
+        hasta: datetime | None,
+        limite: int,
+    ) -> list[ConsumoAtipico]:
+        filtro: Documento = {}
+        if obra_ids is not None:
+            filtro["obra_id"] = {"$in": list(obra_ids)}
+        if estado is not None:
+            filtro["estado_revision"] = estado
+        rango: Documento = {}
+        if desde is not None:
+            rango["$gte"] = desde
+        if hasta is not None:
+            rango["$lt"] = hasta
+        if rango:
+            filtro["registrado_en"] = rango
+        cursor = self._coleccion.find(filtro).sort([("registrado_en", DESCENDING), ("_id", DESCENDING)]).limit(limite)
+        return [de_documento(documento) async for documento in cursor]
+
+    async def pendientes_por_obra(self, obra_ids: Sequence[str]) -> dict[str, int]:
+        cursor = await self._coleccion.aggregate(
+            [
+                {"$match": {"obra_id": {"$in": list(obra_ids)}, "estado_revision": PENDIENTE}},
+                {"$group": {"_id": "$obra_id", "pendientes": {"$sum": 1}}},
+            ]
+        )
+        return {str(fila["_id"]): int(fila["pendientes"]) async for fila in cursor}
+
+    async def revisar(
+        self, consumo_id: str, estado: str, revisado_por: str, revisado_en: datetime, comentario: str | None
+    ) -> ConsumoAtipico | None:
+        documento = await self._coleccion.find_one_and_update(
+            {"_id": consumo_id, "estado_revision": PENDIENTE},
+            {
+                "$set": {
+                    "estado_revision": estado,
+                    "revisado_por": revisado_por,
+                    "revisado_en": revisado_en,
+                    "comentario": comentario,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
         return None if documento is None else de_documento(documento)
 
 

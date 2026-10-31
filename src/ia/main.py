@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from ia.atipicos.infraestructura.web import router as rutas_atipicos
 from ia.auth.dependencias import autenticar_token
 from ia.auth.token import ProveedorJwks, ValidadorToken
 from ia.comun.base_datos import crear_motor
@@ -65,6 +66,7 @@ def crear_app(
         return {"estado": "ok"}
 
     app.include_router(rutas_reportes)
+    app.include_router(rutas_atipicos)
     return app
 
 

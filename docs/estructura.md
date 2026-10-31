@@ -4,7 +4,7 @@ Obligatorio para todo el código de este servicio. Si algo no encaja, propón el
 
 ## Librerías
 
-Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (`xgboost`, `scikit-learn`, `pandas`, `numpy`, `joblib`) se agrega en la 402 y la 403. No se agregan otras librerías para lo mismo.
+Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (`xgboost`, `scikit-learn`, `pandas`, `numpy`, `joblib`) se agrega en la 402 y la 403; la 403 usa `scikit-learn`, `numpy`, `joblib` y `pyyaml` (`parametros.yaml`). No se agregan otras librerías para lo mismo.
 
 - SQLAlchemy se usa **sin ORM** (tablas de Core y `AsyncConnection`): las proyecciones son *upserts* (`INSERT … ON CONFLICT`) y bloqueos (`SELECT … FOR UPDATE`) explícitos.
 - Montos y porcentajes con `decimal.Decimal`, nunca `float`; redondeo «mitad hacia arriba» al final (`ia.reportes.dominio.indicadores.redondear`).
@@ -62,7 +62,28 @@ src/ia/
       programador.py              apscheduler: 00:20 cobros vencidos, 00:30 plazo (America/La_Paz)
       web.py                      APIRouter: GET /reportes/estado (admin)
   riesgo/                         (402) módulo hermano, misma división
-  atipicos/                       (403) módulo hermano, misma división
+  atipicos/                       (403) consumos de material atípicos (Isolation Forest)
+    dominio/
+      variables.py                SalidaMaterial, Historial, calcular_variables_salida() (las 11 variables)
+      historial.py                HistorialEnMemoria, recorrer_en_orden() (generador y reentrenamiento)
+      motivos.py                  Percentiles, motivos_consumo() (1 a 3 motivos)
+      revision.py                 reglas del comentario y de los estados de la revisión
+      consumo.py · valores.py     ConsumoAtipico; estados, límites
+    aplicacion/
+      puertos.py                  ModeloAtipicos, FuenteHistorial, EventosAplicados, RepositorioAtipicos, ObrasReportes,
+                                  NotificadorRiesgo (402; por defecto no hace nada)
+      deteccion.py                DetectarConsumoAtipico (paso previo de MovimientoRegistrado)
+      consultas.py · revisar.py   lista, resumen por obra y revisión; errores.py
+    infraestructura/
+      modelo.py                   carga de modelos/consumos_atipicos/<version>/ (joblib + percentiles.json)
+      salidas_sql.py              historial desde rpt_movimiento, inbox, salidas para reentrenar
+      obras_sql.py                visibilidad desde rpt_obra_resumen
+      repositorio_mongo.py        ia_db.consumo_atipico y su índice
+      eventos.py                  registrar_deteccion(): agrega el paso previo (y el posterior del recálculo)
+      web.py                      APIRouter: GET /consumos-atipicos, GET /consumos-atipicos/resumen, PUT …/revision
+ml/atipicos/                      (403) generar.py + parametros.yaml (datos sintéticos), entrenar.py; datos/ no se versiona
+modelos/consumos_atipicos/        versiones del modelo (modelo.joblib, percentiles.json, metricas.json, parametros.yaml)
+                                  y actual.txt
 tests/                            espejo de src/ia; las de PostgreSQL real llevan la marca «integracion»
 ```
 

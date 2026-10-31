@@ -1,6 +1,8 @@
 """Puertos de los consumos atípicos (403)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from ia.atipicos.dominio.consumo import ConsumoAtipico
@@ -47,3 +49,40 @@ class RepositorioAtipicos(Protocol):
         ...
 
     async def obtener(self, consumo_id: str) -> ConsumoAtipico | None: ...
+
+    async def listar(
+        self,
+        obra_ids: Sequence[str] | None,
+        estado: str | None,
+        desde: datetime | None,
+        hasta: datetime | None,
+        limite: int,
+    ) -> list[ConsumoAtipico]:
+        """De la más reciente a la más antigua (`registrado_en`); `obra_ids = None` = todas; `hasta` sin incluir."""
+        ...
+
+    async def pendientes_por_obra(self, obra_ids: Sequence[str]) -> dict[str, int]:
+        """`PENDIENTE` de cada obra (las que no tienen, no vienen)."""
+        ...
+
+    async def revisar(
+        self, consumo_id: str, estado: str, revisado_por: str, revisado_en: datetime, comentario: str | None
+    ) -> ConsumoAtipico | None:
+        """Actualización atómica solo si sigue `PENDIENTE`; `None` si no lo encontró pendiente."""
+        ...
+
+
+@dataclass(frozen=True)
+class ObraConocida:
+    obra_id: str
+    residente_id: str | None
+
+
+class ObrasReportes(Protocol):
+    """Obras de `rpt_obra_resumen` (401): la visibilidad del residente sale de `residente_id`."""
+
+    async def obras(self, obra_ids: Sequence[str]) -> dict[str, ObraConocida]:
+        """Las que existen (ids que no son UUID se ignoran)."""
+        ...
+
+    async def obras_del_residente(self, residente_id: str) -> list[str]: ...
