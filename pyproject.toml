@@ -19,6 +19,11 @@ dependencies = [
     "apscheduler>=3,<4",
     # zoneinfo necesita la base de zonas horarias en Windows y en imágenes mínimas.
     "tzdata",
+    "xgboost>=3",
+    "scikit-learn>=1",
+    "pandas>=3",
+    "numpy>=2",
+    "pyyaml>=6",
 ]
 
 [project.scripts]
@@ -34,17 +39,25 @@ dev = [
     "ruff",
     "mypy",
 ]
+notebook = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
+
+[tool.uv]
+# El grupo «notebook» (ml/riesgo/exploracion.ipynb) se instala aparte: uv sync --group notebook
+default-groups = ["dev"]
 
 [tool.uv.build-backend]
 module-name = "ia"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "."]
 addopts = "--import-mode=importlib"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
@@ -65,10 +78,10 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.mypy]
 python_version = "3.12"
 mypy_path = "src"
-packages = ["ia"]
+packages = ["ia", "ml"]
 strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["aio_pika.*", "apscheduler.*", "testcontainers.*"]
+module = ["aio_pika.*", "apscheduler.*", "testcontainers.*", "sklearn.*", "yaml.*", "pandas.*"]
 ignore_missing_imports = true
