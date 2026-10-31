@@ -132,8 +132,8 @@ async def insertar_salidas(motor: AsyncEngine, cantidad: int) -> None:
         await conexion.execute(insert(rpt_movimiento), filas)
 
 
-def configuracion(url_db: str, url_mongo: str) -> Configuracion:
-    return Configuracion(reportes_db_url=url_db, mongo_url=url_mongo, mongo_db="ia_db_pruebas")
+def configuracion(url_db: str, url_mongo: str, base: str = "ia_db_pruebas") -> Configuracion:
+    return Configuracion(reportes_db_url=url_db, mongo_url=url_mongo, mongo_db=base)
 
 
 @pytest.mark.integracion
@@ -156,7 +156,7 @@ async def test_real_con_500_salidas_entrena_y_reporta_la_precision_observada(
         [{"_id": "a", "estado_revision": "CONFIRMADO"}, {"_id": "b", "estado_revision": "NORMAL"}]
         + [{"_id": f"p{n}", "estado_revision": "PENDIENTE"} for n in range(3)]
     )
-    resultado = await entrenar_con_reales(configuracion(url_migrada, url_mongo_pruebas))
+    resultado = await entrenar_con_reales(configuracion(url_migrada, url_mongo_pruebas, ia_db.name))
     assert resultado.metricas["filas_entrenamiento"] == 520  # el ingreso no cuenta
     assert resultado.metricas["proporcion_marcada"] <= 0.03
     assert resultado.metricas["revisiones"] == {"NORMAL": 1, "CONFIRMADO": 1}

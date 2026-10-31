@@ -1,0 +1,36 @@
+# Parámetros del generador de obras sintéticas del riesgo de retraso (402). Decisión del equipo: reglas simples y
+# documentadas; la constructora no tiene historial de obras terminadas. Si cambias algo, entrena una versión nueva.
+
+semilla: 2026
+obras: 4000
+cortes_por_obra: 3            # días al azar por obra con plazo transcurrido entre corte_minimo y corte_maximo
+corte_minimo: 0.05
+corte_maximo: 0.95
+
+plazo_dias: [90, 720]         # uniforme (enteros)
+monto: [100000, 20000000]     # log-uniforme, en Bs
+inicio: ["2016-01", "2025-12"]  # mes de inicio al azar (día 1)
+
+# Factores ocultos por obra (el modelo no los ve directamente)
+eficiencia: {media: 1.0, desviacion: 0.2, minimo: 0.4, maximo: 1.6}
+material: {a: 2, b: 8}        # problemas de material p ~ Beta(a, b)
+observaciones: {a: 1.5, b: 8}  # propensión a observaciones q ~ Beta(a, b)
+
+curva_s: {pendiente: 8}       # avance planificado: logística normalizada sobre los meses del plazo
+lluvia:
+  meses: [12, 1, 2, 3]        # diciembre a marzo
+  probabilidad_lluviosos: 0.25
+  probabilidad_resto: 0.08
+  reduccion: [0.3, 0.7]       # el choque reduce entre 30 % y 70 % el avance del mes
+impacto_material: 0.15        # avance × (1 − 0,15 × p)
+atipicos_por_mes: 3           # Poisson(3p) consumos atípicos por mes
+sin_stock_por_mes: 2          # Poisson(2p) salidas sin stock por mes
+
+# Después del plazo se sigue hasta llegar a 100 %, con el ritmo planificado promedio (100 % / meses del plazo)
+# multiplicado por este factor y por los mismos efectos del mes (eficiencia, lluvia, material): una obra atrasada
+# concentra recursos para terminar. Ajuste documentado (31/10/2026): con 1,0 se retrasaban 52 % de las obras, fuera
+# del objetivo; con 2,0, 35 %.
+ritmo_despues_del_plazo: 2.0
+
+retraso_tolerado: 0.10        # se retrasa si termina después de plazo_dias × 1,10
+proporcion_retrasadas: [0.25, 0.45]  # objetivo de la proporción de obras retrasadas

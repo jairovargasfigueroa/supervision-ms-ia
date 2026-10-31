@@ -22,9 +22,9 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY README.md alembic.ini ./
 COPY migraciones ./migraciones
-COPY src ./src
-# Modelos versionados en el repositorio (403): el servicio solo carga estos archivos.
+# Modelos versionados en el repositorio (402 y 403): el servicio solo carga estos archivos.
 COPY modelos ./modelos
+COPY src ./src
 RUN uv sync --locked --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"

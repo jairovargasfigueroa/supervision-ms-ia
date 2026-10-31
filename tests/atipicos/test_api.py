@@ -16,7 +16,6 @@ from pymongo.asynchronous.database import AsyncDatabase
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from apoyo.eventos import CEMENTO, OBRA_1, OBRA_2, PARTIDA_102, Eventos, obra_registrada
-from apoyo.mongo import BASE_PRUEBAS
 from apoyo.tokens import ADMIN_ID, GERENTE_ID, RESIDENTE_ID, encabezado, validador
 from ia.atipicos.dominio.consumo import ConsumoAtipico
 from ia.atipicos.infraestructura.repositorio_mongo import COLECCION, RepositorioAtipicosMongo
@@ -64,7 +63,7 @@ async def cliente(
     otra["asignaciones"] = {**otra["asignaciones"], "residenteId": OTRO_RESIDENTE}
     await eventos.publicar("ObraRegistrada", otra)
 
-    config = Configuracion(mongo_url=url_mongo_pruebas, mongo_db=BASE_PRUEBAS)
+    config = Configuracion(mongo_url=url_mongo_pruebas, mongo_db=ia_db.name)
     app: FastAPI = crear_app(config, validador=validador(), motor=motor)
     app.state.reloj = RelojFijo(REVISADO_EN)
     async with (

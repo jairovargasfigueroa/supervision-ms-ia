@@ -17,8 +17,9 @@ pytestmark = pytest.mark.integracion
 
 
 @pytest.fixture
-async def cliente(motor: AsyncEngine) -> AsyncIterator[httpx.AsyncClient]:
-    app: FastAPI = crear_app(Configuracion(), validador=validador(), motor=motor)
+async def cliente(motor: AsyncEngine, url_mongo_pruebas: str) -> AsyncIterator[httpx.AsyncClient]:
+    config = Configuracion(mongo_url=url_mongo_pruebas, mongo_db="ia_prueba_api")
+    app: FastAPI = crear_app(config, validador=validador(), motor=motor)
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://ia") as cliente,

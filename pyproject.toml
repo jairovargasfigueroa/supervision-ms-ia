@@ -19,8 +19,10 @@ dependencies = [
     "apscheduler>=3,<4",
     # zoneinfo necesita la base de zonas horarias en Windows y en imágenes mínimas.
     "tzdata",
-    # ML de la capa 4 (403: Isolation Forest; modelo.joblib; parametros.yaml).
+    # ML de la capa 4 (402: XGBoost; 403: Isolation Forest, modelo.joblib).
+    "xgboost>=3",
     "scikit-learn>=1",
+    "pandas>=3",
     "numpy>=2",
     "pyyaml>=6",
     "joblib>=1",
@@ -39,10 +41,18 @@ dev = [
     "ruff",
     "mypy",
 ]
+notebook = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
+
+[tool.uv]
+# El grupo «notebook» (ml/riesgo/exploracion.ipynb) se instala aparte: uv sync --group notebook
+default-groups = ["dev"]
 
 [tool.uv.build-backend]
 module-name = "ia"
@@ -75,5 +85,5 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["aio_pika.*", "apscheduler.*", "testcontainers.*", "sklearn.*", "joblib.*", "yaml.*"]
+module = ["aio_pika.*", "apscheduler.*", "testcontainers.*", "sklearn.*", "joblib.*", "yaml.*", "pandas.*"]
 ignore_missing_imports = true

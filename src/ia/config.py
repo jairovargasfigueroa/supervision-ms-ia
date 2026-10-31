@@ -23,7 +23,11 @@ class Configuracion(BaseSettings):
     audiencia: str = "plataforma-api"
     zona_horaria: str = "America/La_Paz"
 
-    # 403: versión del modelo de consumos atípicos (si falta, la de modelos/consumos_atipicos/actual.txt).
+    # Modelos versionados (402): carpeta `modelos/` del repositorio; versión de `actual.txt` si no se indica.
+    modelos_dir: str = "modelos"
+    modelo_riesgo_version: str | None = None
+
+    # 403: versión del modelo de consumos atípicos (si falta, la de <IA_MODELOS_DIR>/consumos_atipicos/actual.txt).
     modelo_atipicos_version: str | None = None
 
     obras_url: str = "http://localhost:8081"

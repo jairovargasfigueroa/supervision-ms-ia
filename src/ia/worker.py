@@ -4,12 +4,13 @@ import asyncio
 import logging
 import signal
 from contextlib import suppress
+from pathlib import Path
 
 from ia.atipicos.infraestructura.eventos import registrar_deteccion
 from ia.atipicos.infraestructura.modelo import cargar_modelo_o_nada
 from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
-from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
+from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
 from ia.comun.tiempo import RelojSistema
 from ia.config import Configuracion
@@ -19,6 +20,8 @@ from ia.reportes.aplicacion.tareas_programadas import TareasProgramadas
 from ia.reportes.infraestructura.eventos import registrar_manejadores
 from ia.reportes.infraestructura.programador import crear_programador, programar_reportes
 from ia.reportes.infraestructura.repositorio_sql import BaseReportesSql
+from ia.riesgo.infraestructura.componer import crear_servicio_riesgo
+from ia.riesgo.infraestructura.disparadores import programar_riesgo, registrar_disparadores
 
 registro = logging.getLogger("ia.worker")
 
@@ -35,21 +38,21 @@ async def principal(config: Configuracion) -> None:
     reloj = RelojSistema(config.zona_horaria)
     consumidor = ConsumidorMensajes()
     registrar_manejadores(consumidor, motor, reloj, config.zona_horaria)
+    riesgo = crear_servicio_riesgo(config, motor, mongo[config.mongo_db], reloj)
+    registrar_disparadores(consumidor, riesgo)
     registrar_deteccion(
         consumidor,
         motor,
         mongo[config.mongo_db],
         reloj,
-        cargar_modelo_o_nada(config.modelo_atipicos_version),
+        cargar_modelo_o_nada(config.modelo_atipicos_version, Path(config.modelos_dir) / "consumos_atipicos"),
         config.zona_horaria,
-        # 402: pasar aquí su NotificadorRiesgo (recálculo con motivo CONSUMO_ATIPICO); sin él, el paso no existe.
-        notificador=None,
     )
-    if indices_registrados():
-        await asegurar_indices(mongo[config.mongo_db])
+    await asegurar_indices_al_arrancar(mongo[config.mongo_db])
 
     programador = crear_programador(config.zona_horaria)
     programar_reportes(programador, TareasProgramadas(BaseReportesSql(motor), reloj), config.zona_horaria)
+    programar_riesgo(programador, riesgo, config.zona_horaria)
 
     conexion = ConexionRabbit(config.rabbitmq_url, consumidor)
     try:

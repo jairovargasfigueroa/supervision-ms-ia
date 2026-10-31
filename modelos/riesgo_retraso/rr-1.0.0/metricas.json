@@ -1,0 +1,45 @@
+{
+  "versionModelo": "rr-1.0.0",
+  "entrenadoEn": "2026-10-31T07:48:55Z",
+  "datos": "SINTETICOS",
+  "filasEntrenamiento": 9600,
+  "filasPrueba": 2400,
+  "obras": 4000,
+  "semilla": 2026,
+  "metricas": {
+    "aucRoc": 0.9033,
+    "aucRocRegla": 0.7683,
+    "recallMedio": 0.8753,
+    "precisionAlto": 0.8306,
+    "brier": 0.1229
+  },
+  "regla": {
+    "aucRoc": 0.7683,
+    "recall": 0.8366,
+    "precision": 0.5181
+  },
+  "minimos": {
+    "aucRoc": 0.8,
+    "mejoraSobreRegla": 0.05,
+    "recallMedio": 0.8,
+    "precisionAlto": 0.7,
+    "brierMaximo": 0.18
+  },
+  "umbrales": {
+    "medio": 0.3,
+    "alto": 0.6
+  },
+  "hiperparametros": {
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "n_estimators": 244,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "tree_method": "hist",
+    "device": "cpu",
+    "objective": "binary:logistic",
+    "eval_metric": "logloss",
+    "random_state": 2026
+  },
+  "segundosEntrenamiento": 11.8
+}

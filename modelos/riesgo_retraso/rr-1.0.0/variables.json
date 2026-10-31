@@ -1,0 +1,64 @@
+{
+  "variables": [
+    {
+      "nombre": "plazo_pct",
+      "descripcion": "Plazo transcurrido (%)",
+      "factor": "Ya transcurrió X % del plazo"
+    },
+    {
+      "nombre": "avance_pct",
+      "descripcion": "Avance de la obra (%)",
+      "factor": "El avance es de solo X %"
+    },
+    {
+      "nombre": "brecha",
+      "descripcion": "Plazo transcurrido − avance (puntos)",
+      "factor": "El avance está X puntos por debajo del plazo transcurrido"
+    },
+    {
+      "nombre": "ritmo_reciente",
+      "descripcion": "Avance mensual de las últimas 3 planillas aprobadas (puntos por mes)",
+      "factor": "El avance mensual reciente es bajo (X puntos por mes)"
+    },
+    {
+      "nombre": "ritmo_requerido",
+      "descripcion": "Avance mensual necesario para terminar a tiempo (puntos por mes)",
+      "factor": "Para terminar a tiempo se necesitan X puntos por mes"
+    },
+    {
+      "nombre": "relacion_ritmo",
+      "descripcion": "Ritmo reciente / ritmo necesario",
+      "factor": "El ritmo de avance de los últimos meses es menor al necesario para terminar a tiempo"
+    },
+    {
+      "nombre": "meses_sin_planilla",
+      "descripcion": "Meses desde la última planilla aprobada",
+      "factor": "Hace X meses que no se aprueba una planilla"
+    },
+    {
+      "nombre": "planillas_observadas",
+      "descripcion": "Veces que se observaron planillas de la obra",
+      "factor": "Se observaron X planillas"
+    },
+    {
+      "nombre": "atipicos_90d",
+      "descripcion": "Consumos de material atípicos en los últimos 90 días",
+      "factor": "Hubo X consumos de material atípicos en los últimos 90 días"
+    },
+    {
+      "nombre": "supera_stock_90d",
+      "descripcion": "Salidas de material sin stock suficiente en los últimos 90 días",
+      "factor": "Hubo X salidas de material sin stock suficiente"
+    },
+    {
+      "nombre": "plazo_dias",
+      "descripcion": "Plazo del contrato (días)",
+      "factor": "El plazo de la obra es largo (X días)"
+    },
+    {
+      "nombre": "log_monto",
+      "descripcion": "Logaritmo del monto del contrato",
+      "factor": "La obra es de monto alto"
+    }
+  ]
+}

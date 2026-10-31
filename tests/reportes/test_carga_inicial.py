@@ -90,9 +90,12 @@ async def _correr(motor: AsyncEngine, servicios: Servicios011, carga_id: str, **
         return await carga.ejecutar(carga_id)
 
 
-def _config(url: str) -> ConfiguracionCarga:
+def _config(url: str, url_mongo: str = "mongodb://127.0.0.1:1") -> ConfiguracionCarga:
+    # MongoDB de prueba (o una dirección sin servidor): nunca la base local del puerto 27017.
     return ConfiguracionCarga(
         reportes_db_url=url,
+        mongo_url=url_mongo,
+        mongo_db="ia_prueba_carga",
         keycloak_issuer=ISSUER,
         obras_url=OBRAS,
         materiales_url=MATERIALES,
@@ -124,10 +127,12 @@ def _consumo_esperado() -> dict[tuple[str, str, str, str], tuple[Decimal, Decima
     return esperado
 
 
-async def test_carga_los_datos_de_la_011_y_el_avance_coincide_con_obras(url_migrada: str, motor: AsyncEngine) -> None:
+async def test_carga_los_datos_de_la_011_y_el_avance_coincide_con_obras(
+    url_migrada: str, url_mongo_pruebas: str, motor: AsyncEngine
+) -> None:
     servicios = Servicios011()
     codigo = await principal(
-        _config(url_migrada),
+        _config(url_migrada, url_mongo_pruebas),
         transporte=servicios.transporte(),
         reloj=RELOJ,
         espera=Esperas(),

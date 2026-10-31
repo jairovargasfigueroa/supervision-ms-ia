@@ -57,6 +57,13 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 
 - `GET /reportes/estado` (`admin`): filas por tabla, último evento aplicado de cada tipo y la última carga inicial.
 
+## Qué hace (402): riesgo de retraso
+
+- Modelo XGBoost (`modelos/riesgo_retraso/`, versión de `actual.txt` o `IA_MODELO_RIESGO_VERSION`; carpeta `IA_MODELOS_DIR`) que da la probabilidad de terminar después de `plazo_dias × 1,10`, con nivel `BAJO` < 0,30 ≤ `MEDIO` < 0,60 ≤ `ALTO` y hasta 3 factores (`pred_contribs`). `SIN_DATOS` si la obra no está `EN_EJECUCION` o lleva menos de 5 % del plazo. Sin modelo, no se calcula (se registra el error).
+- Variables: `ia.riesgo.dominio.variables.calcular_variables`, la misma función del generador sintético (`ml/riesgo/`). Se leen de `reportes_db` y de `ia_db.consumo_atipico` (403; 0 mientras esté vacía).
+- Recalcula (función pública `ServicioRiesgo.recalcular_obra(obra_id, motivo, clave)`): después de `PlanillaAprobada`, `PlanillaObservada` y `ContratoRegistrado` (pasos posteriores del consumidor; un fallo se registra y no reintenta el evento), al terminar `ia-carga-inicial` (todas las obras, `CARGA_INICIAL`) y a las 01:00 de La Paz (obras `EN_EJECUCION`, `DIARIO`). La 403 la llama con `CONSUMO_ATIPICO`.
+- Guarda cada cálculo en `ia_db.prediccion` (idempotente por `clave`) y actualiza `rpt_obra_resumen.riesgo_retraso` y `nivel_riesgo`.
+
 ## Consumos atípicos (403)
 
 ML no supervisado: un Isolation Forest (scikit-learn, CPU) marca las `SALIDA` de material que se salen del comportamiento habitual. No usa modelo de lenguaje ni bloquea nada: deja un consumo atípico `PENDIENTE` para que una persona lo revise.
@@ -65,7 +72,7 @@ ML no supervisado: un Isolation Forest (scikit-learn, CPU) marca las `SALIDA` de
 - **Motivos**: de 1 a 3, con reglas sobre las variables y los percentiles del entrenamiento (`atipicos/dominio/motivos.py`).
 - **Revisión** (`ia-api`): `NORMAL` o `CONFIRMADO` (confirmar exige comentario de 5 a 300 caracteres), solo `admin` y el residente asignado; actualización atómica que solo cambia un consumo `PENDIENTE`.
 - **Modelo**: `ml/atipicos/generar.py` (datos sintéticos) y `ml/atipicos/entrenar.py` (`--fuente sintetica` o `--fuente real` con ≥ 500 salidas), artefactos en `modelos/consumos_atipicos/<version>/` y `actual.txt` (o `IA_MODELO_ATIPICOS_VERSION`). El servicio solo carga archivos de su propio repositorio (`modelo.joblib` usa `pickle`). Reentrenar es manual.
-- **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se llama al puerto `NotificadorRiesgo.recalcular(obra_id, "CONSUMO_ATIPICO")`; sin la 402 no se pasa ningún notificador y el paso no se registra.
+- **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se llama al puerto `NotificadorRiesgo.consumo_atipico(obra_id, evento_id)`; su adaptador `RecalculoRiesgo402` (`atipicos/infraestructura/riesgo.py`) llama a `ServicioRiesgo.recalcular_obra(obra_id, motivo=CONSUMO_ATIPICO, clave={obraId}:{eventoId})`. Si falla, se registra y no se reintenta (la tarea diaria de la 402 lo corrige).
 
 ## Autenticación y visibilidad
 

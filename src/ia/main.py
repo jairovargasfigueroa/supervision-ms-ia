@@ -14,10 +14,13 @@ from ia.auth.token import ProveedorJwks, ValidadorToken
 from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.http import instalar_http
-from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
+from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
 from ia.config import Configuracion
 from ia.reportes.infraestructura.web import router as rutas_reportes
+from ia.riesgo.aplicacion.puertos import ModeloRiesgo
+from ia.riesgo.infraestructura.modelo_xgboost import cargar_modelo
+from ia.riesgo.infraestructura.web import router as rutas_riesgo
 
 registro = logging.getLogger("ia.api")
 
@@ -27,6 +30,8 @@ def crear_app(
     *,
     validador: ValidadorToken | None = None,
     motor: AsyncEngine | None = None,
+    modelo_riesgo: ModeloRiesgo | None = None,
+    cargar_modelo_riesgo: bool = True,
 ) -> FastAPI:
     config = config or Configuracion()
 
@@ -37,8 +42,7 @@ def crear_app(
         app.state.motor = motor or crear_motor(config.reportes_db_url)
         app.state.mongo = crear_cliente_mongo(config.mongo_url)
         app.state.ia_db = app.state.mongo[config.mongo_db]
-        if indices_registrados():
-            await asegurar_indices(app.state.ia_db)
+        await asegurar_indices_al_arrancar(app.state.ia_db)
         try:
             yield
         finally:
@@ -55,6 +59,10 @@ def crear_app(
         openapi_url="/openapi.json" if config.entorno == "desarrollo" else None,
     )
     app.state.config = config
+    # 402: el modelo se carga una vez; sin modelo, GET /modelos/riesgo-retraso responde 503 MODELO_NO_DISPONIBLE.
+    app.state.modelo_riesgo = modelo_riesgo or (
+        cargar_modelo(config.modelos_dir, config.modelo_riesgo_version) if cargar_modelo_riesgo else None
+    )
     app.state.validador_token = validador or ValidadorToken(
         ProveedorJwks(config.jwks_url), emisor=config.keycloak_issuer, audiencia=config.audiencia
     )
@@ -66,6 +74,7 @@ def crear_app(
         return {"estado": "ok"}
 
     app.include_router(rutas_reportes)
+    app.include_router(rutas_riesgo)
     app.include_router(rutas_atipicos)
     return app
 

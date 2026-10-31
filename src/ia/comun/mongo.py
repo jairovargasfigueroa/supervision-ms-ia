@@ -4,11 +4,15 @@ En la 401 solo se crea la conexión: las colecciones (y sus índices) las agrega
 (`consumo_atipico`) con `registrar_indice`; `ia-api` e `ia-worker` los aseguran al arrancar.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import PyMongoError
+
+registro = logging.getLogger("ia.mongo")
 
 
 @dataclass(frozen=True)
@@ -42,3 +46,13 @@ async def asegurar_indices(base: AsyncDatabase[dict[str, Any]]) -> int:
     for indice in _INDICES:
         await base[indice.coleccion].create_index(list(indice.claves), name=indice.nombre, unique=indice.unico)
     return len(_INDICES)
+
+
+async def asegurar_indices_al_arrancar(base: AsyncDatabase[dict[str, Any]]) -> None:
+    """Como `asegurar_indices`, pero si MongoDB no responde lo registra y sigue (el proceso arranca igual)."""
+    if not _INDICES:
+        return
+    try:
+        await asegurar_indices(base)
+    except PyMongoError as error:
+        registro.error("No se pudieron asegurar los índices de MongoDB: %s", error)

@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Any
 
 import pytest
@@ -62,9 +61,11 @@ class _ColeccionFalsa:
 
 
 async def test_asegurar_indices_crea_los_registrados() -> None:
-    # Los módulos (403, 402) registran sus propios índices al importarse: cada colección tiene su doble.
-    base: Any = defaultdict(_ColeccionFalsa)
-    coleccion = base["prueba"]
+    from collections import defaultdict
+
+    colecciones: defaultdict[str, _ColeccionFalsa] = defaultdict(_ColeccionFalsa)
+    coleccion = colecciones["prueba"]
+    base: Any = colecciones
     indice = IndiceMongo(coleccion="prueba", claves=(("obra_id", 1), ("fecha", -1)), nombre="ix_prueba")
     registrar_indice(indice)
     registrar_indice(indice)
