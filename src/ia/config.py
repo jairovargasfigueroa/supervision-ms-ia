@@ -23,6 +23,9 @@ class Configuracion(BaseSettings):
     audiencia: str = "plataforma-api"
     zona_horaria: str = "America/La_Paz"
 
+    # 403: versión del modelo de consumos atípicos (si falta, la de modelos/consumos_atipicos/actual.txt).
+    modelo_atipicos_version: str | None = None
+
     obras_url: str = "http://localhost:8081"
     materiales_url: str = "http://localhost:8082"
     finanzas_url: str = "http://localhost:8083"

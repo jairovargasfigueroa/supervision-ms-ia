@@ -5,6 +5,8 @@ import logging
 import signal
 from contextlib import suppress
 
+from ia.atipicos.infraestructura.eventos import registrar_deteccion
+from ia.atipicos.infraestructura.modelo import cargar_modelo_o_nada
 from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
@@ -33,6 +35,14 @@ async def principal(config: Configuracion) -> None:
     reloj = RelojSistema(config.zona_horaria)
     consumidor = ConsumidorMensajes()
     registrar_manejadores(consumidor, motor, reloj, config.zona_horaria)
+    registrar_deteccion(
+        consumidor,
+        motor,
+        mongo[config.mongo_db],
+        reloj,
+        cargar_modelo_o_nada(config.modelo_atipicos_version),
+        config.zona_horaria,
+    )
     if indices_registrados():
         await asegurar_indices(mongo[config.mongo_db])
 
