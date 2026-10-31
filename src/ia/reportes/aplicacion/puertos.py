@@ -83,6 +83,17 @@ class FilaPlanilla:
     cargada_en: datetime
 
 
+@dataclass(frozen=True)
+class CorridaCarga:
+    carga_id: str
+    estado: str
+    iniciada_en: datetime
+    terminada_en: datetime | None
+    obras: int
+    filas: dict[str, int]
+    error: str | None
+
+
 class RepositorioReportes(Protocol):
     """Operaciones sobre `reportes_db` dentro de una transacción abierta. Cada escritura es idempotente por fila."""
 
@@ -166,6 +177,17 @@ class RepositorioReportes(Protocol):
     async def terminar_carga(
         self, carga_id: str, estado: str, obras: int, filas: dict[str, int], error: str | None, ahora: datetime
     ) -> None: ...
+
+    # Estado (GET /reportes/estado)
+    async def contar_filas(self) -> dict[str, int]:
+        """Filas de cada tabla `rpt_*` con su nombre en camelCase (`rptObraResumen`…)."""
+        ...
+
+    async def ultimos_eventos(self) -> list[tuple[str, datetime]]:
+        """Último `aplicado_en` de cada tipo de evento."""
+        ...
+
+    async def ultima_carga(self) -> CorridaCarga | None: ...
 
 
 class BaseReportes(Protocol):

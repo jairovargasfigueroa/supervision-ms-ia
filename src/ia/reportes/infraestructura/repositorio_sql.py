@@ -10,10 +10,12 @@ from sqlalchemy import Boolean, Label, case, func, literal_column, select, text,
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from ia.mensajeria.inbox import evento_aplicado
 from ia.reportes.aplicacion.lecturas import MovimientoLeido, ObraLeida, PlanillaAprobadaLeida
 from ia.reportes.aplicacion.puertos import (
     CobroParcial,
     CobroPendiente,
+    CorridaCarga,
     FilaPlanilla,
     ObraResumen,
     PlanillaGuardada,
@@ -338,6 +340,41 @@ class RepositorioReportesSql:
             update(carga_inicial)
             .where(carga_inicial.c.carga_id == carga_id)
             .values(estado=estado, obras=obras, filas=filas, error=error, terminada_en=ahora)
+        )
+
+    # Estado
+
+    async def contar_filas(self) -> dict[str, int]:
+        tablas = {
+            "rptObraResumen": rpt_obra_resumen,
+            "rptPlanilla": rpt_planilla,
+            "rptConsumoMaterial": rpt_consumo_material,
+            "rptMovimiento": rpt_movimiento,
+            "rptCobro": rpt_cobro,
+        }
+        conteos: dict[str, int] = {}
+        for nombre, tabla in tablas.items():
+            conteos[nombre] = int((await self._c.execute(select(func.count()).select_from(tabla))).scalar_one())
+        return conteos
+
+    async def ultimos_eventos(self) -> list[tuple[str, datetime]]:
+        t = evento_aplicado.c
+        filas = await self._c.execute(select(t.tipo, func.max(t.aplicado_en)).group_by(t.tipo).order_by(t.tipo))
+        return [(str(tipo), aplicado_en) for tipo, aplicado_en in filas]
+
+    async def ultima_carga(self) -> CorridaCarga | None:
+        t = carga_inicial.c
+        fila = (await self._c.execute(select(carga_inicial).order_by(t.iniciada_en.desc()).limit(1))).first()
+        if fila is None:
+            return None
+        return CorridaCarga(
+            carga_id=str(fila.carga_id),
+            estado=fila.estado,
+            iniciada_en=fila.iniciada_en,
+            terminada_en=fila.terminada_en,
+            obras=fila.obras,
+            filas=dict(fila.filas),
+            error=fila.error,
         )
 
 

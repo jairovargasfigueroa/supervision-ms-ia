@@ -16,6 +16,7 @@ from ia.comun.http import instalar_http
 from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
 from ia.comun.registros import configurar_registros
 from ia.config import Configuracion
+from ia.reportes.infraestructura.web import router as rutas_reportes
 
 registro = logging.getLogger("ia.api")
 
@@ -63,6 +64,7 @@ def crear_app(
         """Sin token; no toca la base ni la cola."""
         return {"estado": "ok"}
 
+    app.include_router(rutas_reportes)
     return app
 
 

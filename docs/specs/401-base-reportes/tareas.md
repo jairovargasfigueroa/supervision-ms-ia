@@ -14,4 +14,4 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Proyecciones de los 6 eventos como casos de uso compartidos (idempotentes por fila; bloqueo de la fila de la obra en `PlanillaAprobada` y `PlanillaObservada`; `MovimientoRegistrado` suma solo si insertó; orden indistinto de `CobroEmitido` y `PlanillaAprobada`); pruebas con PostgreSQL real
 - [x] Tareas programadas (00:20 cobros vencidos, 00:30 plazo) con `apscheduler`; pruebas de las funciones que llaman
 - [x] Carga inicial (`ia.carga_inicial`): token de `ia-reportes` por *client credentials*, clientes `httpx` de los 7 endpoints con paginación, transacción y bloqueo por obra, `cargada_en`, aproximaciones documentadas, comprobación del avance contra Obras, tabla `carga_inicial` y bloqueo de una sola corrida; pruebas con `httpx.MockTransport` y PostgreSQL real (las de «Pruebas»: datos de la 011, dos corridas, eventos viejos y en paralelo, fallo a mitad)
-- [ ] `GET /reportes/estado` (rol `admin`, con `cargaInicial`); pruebas
+- [x] `GET /reportes/estado` (rol `admin`, con `cargaInicial`); pruebas
