@@ -1,5 +1,6 @@
 """Puertos de `reportes`: la base de reportes (y, en la carga inicial, los servicios que lee)."""
 
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -45,6 +46,19 @@ class CobroParcial:
     estado: str | None = None
 
 
+@dataclass(frozen=True)
+class CobroPendiente:
+    cobro_id: str
+    vence_en: date | None
+
+
+@dataclass(frozen=True)
+class PlazoObra:
+    obra_id: str
+    fecha_inicio: date | None
+    plazo_dias: int | None
+
+
 class RepositorioReportes(Protocol):
     """Operaciones sobre `reportes_db` dentro de una transacción abierta. Cada escritura es idempotente por fila."""
 
@@ -65,6 +79,8 @@ class RepositorioReportes(Protocol):
     async def actualizar_indicadores(
         self, obra_id: str, ahora: datetime, avance_pct: Decimal | None = None, plazo_pct: Decimal | None = None
     ) -> None: ...
+
+    async def obras_para_plazo(self) -> list[PlazoObra]: ...
 
     # rpt_planilla
     async def obtener_planilla(self, planilla_id: str) -> PlanillaGuardada | None:
@@ -90,6 +106,12 @@ class RepositorioReportes(Protocol):
         """Inserta o completa las columnas vacías. `True` si insertó."""
         ...
 
+    async def cobros_pendientes(self) -> list[CobroPendiente]: ...
+
+    async def marcar_vencidos(self, cobro_ids: list[str], ahora: datetime) -> int:
+        """Los que siguen `PENDIENTE` pasan a `VENCIDO`; devuelve cuántos cambió."""
+        ...
+
     # rpt_movimiento y rpt_consumo_material
     async def insertar_movimiento(self, movimiento: MovimientoLeido) -> bool:
         """`ON CONFLICT DO NOTHING`. `True` solo si insertó."""
@@ -105,3 +127,9 @@ class RepositorioReportes(Protocol):
         monto: Decimal,
         ahora: datetime,
     ) -> None: ...
+
+
+class BaseReportes(Protocol):
+    def transaccion(self) -> AbstractAsyncContextManager[RepositorioReportes]:
+        """Abre una transacción; se confirma al salir sin error y se deshace si hay una excepción."""
+        ...

@@ -1,16 +1,18 @@
 """Repositorio de `reportes_db` con SQLAlchemy Core sobre una conexión con la transacción abierta."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Boolean, Label, case, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ia.reportes.aplicacion.lecturas import MovimientoLeido, ObraLeida, PlanillaAprobadaLeida
-from ia.reportes.aplicacion.puertos import CobroParcial, ObraResumen, PlanillaGuardada
-from ia.reportes.dominio.valores import APROBADA, EN_EJECUCION, OBSERVADA, SIN_CONTRATO
+from ia.reportes.aplicacion.puertos import CobroParcial, CobroPendiente, ObraResumen, PlanillaGuardada, PlazoObra
+from ia.reportes.dominio.valores import APROBADA, EN_EJECUCION, OBSERVADA, PENDIENTE, SIN_CONTRATO, VENCIDO
 from ia.reportes.infraestructura.tablas import (
     rpt_cobro,
     rpt_consumo_material,
@@ -101,6 +103,11 @@ class RepositorioReportesSql:
         if plazo_pct is not None:
             valores["plazo_pct"] = plazo_pct
         await self._c.execute(update(rpt_obra_resumen).where(rpt_obra_resumen.c.obra_id == obra_id).values(**valores))
+
+    async def obras_para_plazo(self) -> list[PlazoObra]:
+        t = rpt_obra_resumen.c
+        filas = await self._c.execute(select(t.obra_id, t.fecha_inicio, t.plazo_dias).order_by(t.obra_id))
+        return [PlazoObra(str(f.obra_id), f.fecha_inicio, f.plazo_dias) for f in filas]
 
     # rpt_planilla
 
@@ -193,6 +200,22 @@ class RepositorioReportesSql:
         upsert = consulta.on_conflict_do_update(index_elements=["cobro_id"], set_=set_).returning(_INSERTADA)
         return bool((await self._c.execute(upsert)).scalar_one())
 
+    async def cobros_pendientes(self) -> list[CobroPendiente]:
+        t = rpt_cobro.c
+        filas = await self._c.execute(select(t.cobro_id, t.vence_en).where(t.estado == PENDIENTE).order_by(t.cobro_id))
+        return [CobroPendiente(str(f.cobro_id), f.vence_en) for f in filas]
+
+    async def marcar_vencidos(self, cobro_ids: list[str], ahora: datetime) -> int:
+        if not cobro_ids:
+            return 0
+        resultado = await self._c.execute(
+            update(rpt_cobro)
+            .where(rpt_cobro.c.cobro_id.in_(cobro_ids), rpt_cobro.c.estado == PENDIENTE)
+            .values(estado=VENCIDO, actualizado_en=ahora)
+            .returning(rpt_cobro.c.cobro_id)
+        )
+        return len(resultado.all())
+
     # rpt_movimiento y rpt_consumo_material
 
     async def insertar_movimiento(self, movimiento: MovimientoLeido) -> bool:
@@ -246,6 +269,18 @@ class RepositorioReportesSql:
             },
         )
         await self._c.execute(consulta)
+
+
+class BaseReportesSql:
+    """`BaseReportes` sobre el motor async de `reportes_db`."""
+
+    def __init__(self, motor: AsyncEngine) -> None:
+        self.motor = motor
+
+    @asynccontextmanager
+    async def transaccion(self) -> AsyncIterator[RepositorioReportesSql]:
+        async with self.motor.begin() as conexion:
+            yield RepositorioReportesSql(conexion)
 
 
 def _texto(valor: object) -> str | None:

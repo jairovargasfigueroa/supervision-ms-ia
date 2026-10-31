@@ -13,7 +13,10 @@ from ia.comun.tiempo import RelojSistema
 from ia.config import Configuracion
 from ia.mensajeria.consumidor import ConsumidorMensajes
 from ia.mensajeria.rabbit import ConexionRabbit
+from ia.reportes.aplicacion.tareas_programadas import TareasProgramadas
 from ia.reportes.infraestructura.eventos import registrar_manejadores
+from ia.reportes.infraestructura.programador import crear_programador, programar_reportes
+from ia.reportes.infraestructura.repositorio_sql import BaseReportesSql
 
 registro = logging.getLogger("ia.worker")
 
@@ -33,12 +36,18 @@ async def principal(config: Configuracion) -> None:
     if indices_registrados():
         await asegurar_indices(mongo[config.mongo_db])
 
+    programador = crear_programador(config.zona_horaria)
+    programar_reportes(programador, TareasProgramadas(BaseReportesSql(motor), reloj), config.zona_horaria)
+
     conexion = ConexionRabbit(config.rabbitmq_url, consumidor)
     try:
+        programador.start()
         if await conexion.iniciar(detener):
             registro.info("ia-worker en marcha.")
             await detener.wait()
     finally:
+        if programador.running:
+            programador.shutdown(wait=False)
         await conexion.cerrar()
         await mongo.close()
         await motor.dispose()
