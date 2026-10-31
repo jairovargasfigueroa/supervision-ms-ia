@@ -30,7 +30,7 @@ ia-carga-inicial = "ia.carga_inicial:ejecutar"
 dev = [
     "pytest>=9",
     "pytest-asyncio>=1",
-    "testcontainers[postgres]>=4",
+    "testcontainers[postgres]>=4.15",
     "ruff",
     "mypy",
 ]

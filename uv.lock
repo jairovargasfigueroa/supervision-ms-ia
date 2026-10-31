@@ -904,7 +904,7 @@ dev = [
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio", specifier = ">=1" },
     { name = "ruff" },
-    { name = "testcontainers", extras = ["postgres"], specifier = ">=4" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.15" },
 ]
 
 [[package]]

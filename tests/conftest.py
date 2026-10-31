@@ -14,3 +14,7 @@ def pytest_asyncio_loop_factories(
     if sys.platform == "win32":
         return {"selector": asyncio.SelectorEventLoop}
     return {"asyncio": asyncio.new_event_loop}
+
+
+# Fixtures de PostgreSQL real (Testcontainers o IA_PRUEBAS_DB_URL).
+pytest_plugins = ["apoyo.base_datos"]
