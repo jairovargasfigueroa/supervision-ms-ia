@@ -13,7 +13,7 @@ from ia.auth.token import ProveedorJwks, ValidadorToken
 from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.http import instalar_http
-from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
+from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
 from ia.config import Configuracion
 from ia.reportes.infraestructura.web import router as rutas_reportes
@@ -36,8 +36,7 @@ def crear_app(
         app.state.motor = motor or crear_motor(config.reportes_db_url)
         app.state.mongo = crear_cliente_mongo(config.mongo_url)
         app.state.ia_db = app.state.mongo[config.mongo_db]
-        if indices_registrados():
-            await asegurar_indices(app.state.ia_db)
+        await asegurar_indices_al_arrancar(app.state.ia_db)
         try:
             yield
         finally:

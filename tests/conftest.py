@@ -1,10 +1,18 @@
 """Configuración común de las pruebas."""
 
 import asyncio
+import os
 import sys
 from collections.abc import Callable, Mapping
 
 import pytest
+
+# Ninguna prueba debe tocar las bases ni la cola locales (PostgreSQL 5433, MongoDB 27017, RabbitMQ 5672): las que
+# necesitan una real usan Testcontainers y lo pasan explícito.
+os.environ["IA_REPORTES_DB_URL"] = "postgresql+psycopg://nadie:nadie@127.0.0.1:1/ninguna"
+os.environ["IA_MONGO_URL"] = "mongodb://127.0.0.1:1"
+os.environ["IA_MONGO_DB"] = "ia_pruebas"
+os.environ["IA_RABBITMQ_URL"] = "amqp://nadie:nadie@127.0.0.1:1/"
 
 
 def pytest_asyncio_loop_factories(
