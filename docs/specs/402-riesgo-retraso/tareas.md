@@ -5,7 +5,7 @@ Requisitos y diseño: `docs/specs/402-riesgo-retraso/` de `supervision-docs` (ca
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Agregar `xgboost` 3, `scikit-learn` 1, `pandas` 3, `numpy` 2 y `pyyaml` 6 al `pyproject.toml`
-- [ ] `riesgo/dominio/variables.py`: `calcular_variables(estado_obra, hoy)`, textos de factores y niveles; pruebas con casos fijos
+- [x] `riesgo/dominio/variables.py`: `calcular_variables(estado_obra, hoy)`, textos de factores y niveles; pruebas con casos fijos
 - [ ] Generador `ml/riesgo/generar.py` con `parametros.yaml` y semilla 2026; pruebas de reproducibilidad y proporción de retrasadas
 - [ ] `ml/riesgo/entrenar.py` (`--fuente sintetica` y `--fuente real --archivo`): división por obra, búsqueda de hiperparámetros en CPU (`tree_method = "hist"`), línea base de la regla, métricas mínimas y artefactos en `modelos/riesgo_retraso/rr-1.0.0/`; formato del CSV real en `ml/riesgo/README.md`; entrenar y versionar `rr-1.0.0` y anotar en el README cuánto tardó (menos de un minuto)
 - [ ] Carga del modelo y predicción con factores (`pred_contribs`); colección `prediccion` con índice único por `clave`; pruebas
