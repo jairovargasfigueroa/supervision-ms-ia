@@ -9,9 +9,11 @@ from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices, crear_cliente_mongo, indices_registrados
 from ia.comun.registros import configurar_registros
+from ia.comun.tiempo import RelojSistema
 from ia.config import Configuracion
 from ia.mensajeria.consumidor import ConsumidorMensajes
 from ia.mensajeria.rabbit import ConexionRabbit
+from ia.reportes.infraestructura.eventos import registrar_manejadores
 
 registro = logging.getLogger("ia.worker")
 
@@ -25,7 +27,9 @@ async def principal(config: Configuracion) -> None:
 
     motor = crear_motor(config.reportes_db_url)
     mongo = crear_cliente_mongo(config.mongo_url)
+    reloj = RelojSistema(config.zona_horaria)
     consumidor = ConsumidorMensajes()
+    registrar_manejadores(consumidor, motor, reloj, config.zona_horaria)
     if indices_registrados():
         await asegurar_indices(mongo[config.mongo_db])
 
