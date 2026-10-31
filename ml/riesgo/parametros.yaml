@@ -29,7 +29,7 @@ sin_stock_por_mes: 2          # Poisson(2p) salidas sin stock por mes
 # Después del plazo se sigue hasta llegar a 100 %, con el ritmo planificado promedio (100 % / meses del plazo)
 # multiplicado por este factor y por los mismos efectos del mes (eficiencia, lluvia, material): una obra atrasada
 # concentra recursos para terminar. Ajuste documentado (31/10/2026): con 1,0 se retrasaban 52 % de las obras, fuera
-# del objetivo; con 2,0, 35 %.
+# del objetivo; con 2,0, 36,8 %.
 ritmo_despues_del_plazo: 2.0
 
 retraso_tolerado: 0.10        # se retrasa si termina después de plazo_dias × 1,10

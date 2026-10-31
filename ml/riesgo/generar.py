@@ -92,6 +92,7 @@ def simular_obra(numero: int, p: dict[str, Any], rng: np.random.Generator) -> Ob
     obra = ObraSimulada(f"sint-{numero:05d}", inicio, plazo, monto, 0.0, False)
     acumulado = 0.0
     pendiente = 0.0  # avance hecho que todavía no entró en una planilla aprobada
+    observada_antes = False
     i = 0
     while acumulado < 100 and i < 600:
         anio, mes = _mes(inicio, i)
@@ -112,9 +113,13 @@ def simular_obra(numero: int, p: dict[str, Any], rng: np.random.Generator) -> Ob
         pendiente += real
         fin_de_mes = _ultimo_dia(anio, mes)
         if pendiente > 0:
-            if rng.random() < q:
-                obra.observaciones.append(fin_de_mes)  # se observa: su avance se aprueba con la planilla siguiente
+            # Con probabilidad q la planilla se observa primero y su avance se aprueba el mes siguiente (junto con el
+            # de ese mes); la que viene de una observación ya no se vuelve a observar.
+            if not observada_antes and rng.random() < q:
+                obra.observaciones.append(fin_de_mes)
+                observada_antes = True
             else:
+                observada_antes = False
                 obra.planillas.append((fin_de_mes, f"{anio:04d}-{mes:02d}", pendiente))
                 pendiente = 0.0
         i += 1

@@ -56,8 +56,8 @@ def test_carga_la_version_de_actual_txt(modelo: ModeloXgboost) -> None:
 def test_prediccion_de_filas_conocidas(modelo: ModeloXgboost) -> None:
     alta, contribuciones = modelo.predecir(calcular_variables(ATRASADA, HOY))
     baja, _ = modelo.predecir(calcular_variables(AL_DIA, HOY))
-    assert alta == pytest.approx(0.9763, abs=1e-4)
-    assert baja == pytest.approx(0.0628, abs=1e-4)
+    assert alta == pytest.approx(0.9929, abs=1e-4)
+    assert baja == pytest.approx(0.0169, abs=1e-4)
     assert set(contribuciones) == set(calcular_variables(ATRASADA, HOY))
 
 
@@ -70,7 +70,7 @@ def test_calcular_prediccion_con_nivel_y_factores(modelo: ModeloXgboost) -> None
     obra = ObraParaRiesgo("o1", "EN_EJECUCION", 80.0, ATRASADA)
     prediccion = calcular_prediccion(modelo, obra, HOY, "DIARIO", "o1:diario:2026-10-28", AHORA)
     assert prediccion.nivel == "ALTO"
-    assert prediccion.riesgo_retraso == pytest.approx(0.9763, abs=1e-4)
+    assert prediccion.riesgo_retraso == pytest.approx(0.9929, abs=1e-4)
     assert 1 <= len(prediccion.factores) <= 3
     assert prediccion.factores[0].peso >= prediccion.factores[-1].peso > 0.05
     assert prediccion.version_modelo == modelo.info.version
