@@ -16,7 +16,7 @@ Devuelve: 200 {
   "ultimosEventos": [{ "tipo": "PlanillaAprobada", "aplicadoEn": "2026-11-15T14:30:00Z" }],
   "cargaInicial": {
     "cargaId": "uuid", "estado": "TERMINADA", "iniciadaEn": "2026-11-01T13:00:00Z", "terminadaEn": "2026-11-01T13:00:09Z",
-    "obras": 3, "filas": { "rptObraResumen": 3, "rptPlanilla": 5, "rptMovimiento": 67, "rptCobro": 3 }, "error": null
+    "obras": 3, "filas": { "rptObraResumen": 3, "rptPlanilla": 4, "rptMovimiento": 67, "rptCobro": 3 }, "error": null
   }
 }
 `cargaInicial`: la última corrida; `null` si nunca se corrió.
