@@ -95,6 +95,23 @@ class FuenteRiesgoSql:
             )
 
 
+class VisibilidadObrasSql:
+    """Visibilidad del servicio de IA: `admin` y `gerente` todas; `residente` las de `rpt_obra_resumen.residente_id`."""
+
+    def __init__(self, motor: AsyncEngine) -> None:
+        self._motor = motor
+
+    async def visibles(self, obra_ids: list[str], residente_id: str | None) -> set[str]:
+        if not obra_ids:
+            return set()
+        o = rpt_obra_resumen.c
+        consulta = select(o.obra_id).where(o.obra_id.in_(obra_ids))
+        if residente_id is not None:
+            consulta = consulta.where(o.residente_id == residente_id)
+        async with self._motor.connect() as conexion:
+            return {str(fila.obra_id) for fila in await conexion.execute(consulta)}
+
+
 class ContadorAtipicosMongo:
     """`ia_db.consumo_atipico` (lo llena la 403): mientras no exista, cuenta 0."""
 

@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes) y 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 

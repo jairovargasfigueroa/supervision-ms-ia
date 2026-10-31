@@ -95,3 +95,9 @@ class ContadorAtipicos(Protocol):
     async def contar(self, obra_id: str, desde: datetime) -> int:
         """Consumos atípicos (403) de la obra detectados desde `desde` con estado distinto de `NORMAL`."""
         ...
+
+
+class VisibilidadObras(Protocol):
+    async def visibles(self, obra_ids: list[str], residente_id: str | None) -> set[str]:
+        """Las obras de la lista que están en la base de reportes y, con `residente_id`, que son de ese residente."""
+        ...

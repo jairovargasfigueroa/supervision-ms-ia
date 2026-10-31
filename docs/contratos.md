@@ -25,8 +25,38 @@ Errores: 401 · 403
 
 No se expone por GraphQL (es una ayuda para comprobar la proyección y la carga).
 
+```
+### GET /predicciones?obraIds=a,b,c · 402
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`, `residente`
+Recibe: hasta 100 ids separados por coma
+Devuelve: 200 [{
+  "obraId": "uuid", "probabilidad": 0.72, "nivel": "ALTO",
+  "factores": [{ "variable": "relacion_ritmo", "descripcion": "El ritmo de avance de los últimos meses es menor al necesario para terminar a tiempo", "peso": 0.81 }],
+  "versionModelo": "rr-1.0.0", "calculadaEn": "2026-11-15T05:00:00Z"
+}]
+Solo las obras visibles para el usuario que tengan predicción, en el orden pedido; las demás se omiten. Con `SIN_DATOS`: "probabilidad": null, "factores": [].
+Errores: 400 DEMASIADAS_OBRAS (más de 100) · 400 DATOS_INVALIDOS (sin ids o con un id que no es UUID) · 401 · 403
+
+### GET /obras/{obraId}/prediccion?historial=30 · 402
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`, `residente` (que pueda ver la obra)
+Devuelve: 200 { …mismo objeto…, "historial": [{ "probabilidad": 0.65, "calculadaEn": "…" }] }   (historial de 1 a 90, por defecto 30, del más antiguo al más reciente; omite los cálculos `SIN_DATOS`)
+Obra visible sin predicción todavía: 200 con "nivel": "SIN_DATOS", "probabilidad": null, "factores": [], "versionModelo": null, "calculadaEn": null, "historial": []
+Errores: 404 OBRA_NO_ENCONTRADA (también si no la puede ver) · 400 DATOS_INVALIDOS (historial fuera de 1 a 90) · 401 · 403
+
+### GET /modelos/riesgo-retraso · 402
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`, `residente`
+Devuelve: 200 {
+  "versionModelo": "rr-1.0.0", "entrenadoEn": "2026-11-20T15:00:00Z", "datos": "SINTETICOS", "filasEntrenamiento": 9600,   ("datos": "SINTETICOS" o "REALES")
+  "metricas": { "aucRoc": 0.86, "aucRocRegla": 0.74, "recallMedio": 0.83, "precisionAlto": 0.74, "brier": 0.14 },
+  "umbrales": { "medio": 0.30, "alto": 0.60 },
+  "variables": [{ "nombre": "relacion_ritmo", "descripcion": "Ritmo reciente / ritmo necesario" }]
+}
+Errores: 503 MODELO_NO_DISPONIBLE · 401 · 403
+```
+
+Las consultas del riesgo leen MongoDB (`prediccion`) y `reportes_db` (visibilidad); no calculan nada en la petición.
+
 - Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles reciben `403 SIN_PERMISO` en todo el servicio. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido).
-- El cliente REST del gateway hacia este servicio (`IA_URL`) se agrega en la 402.
 
 ## Escucha (cola `ia`, exchange `plataforma`)
 
