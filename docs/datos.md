@@ -104,7 +104,7 @@ Las columnas que llegan por eventos distintos pueden estar null hasta que llega 
 | terminada_en | timestamptz | null mientras corre |
 | estado | varchar | `EN_CURSO`, `TERMINADA`, `FALLIDA` |
 | obras | int | obras procesadas |
-| filas | jsonb | filas insertadas por tabla (`{"rptObraResumen": 3, "rptPlanilla": 5, "rptMovimiento": 67, "rptCobro": 3}`) |
+| filas | jsonb | filas insertadas por tabla (`{"rptObraResumen": 3, "rptPlanilla": 4, "rptMovimiento": 67, "rptCobro": 3}`) |
 | error | text | servicio, obra y causa si falló |
 
 Una corrida que se cortó sin terminar queda `EN_CURSO`; la siguiente, que ya tomó el bloqueo, la marca `FALLIDA` al empezar.
