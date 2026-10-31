@@ -1,0 +1,114 @@
+# Servicio de IA: datos
+
+## `reportes_db` (PostgreSQL, misma instancia del puerto 5433, usuario propio `ia`)
+
+Modelo de lectura (CQRS) de la 401. Solo lo escribe este servicio (proyecciones de eventos y carga inicial). Migraciones con Alembic (`migraciones/`).
+
+### rpt_obra_resumen
+| Campo | Tipo | Notas |
+|---|---|---|
+| obra_id | uuid | PK |
+| nombre | varchar | |
+| ubicacion | varchar | null si el evento no la trae |
+| zona | varchar | `NORTE`, `SUR`, `ESTE`, `OESTE`, `CENTRO` o null |
+| cliente_id | uuid | ref Keycloak |
+| residente_id | uuid | ref Keycloak; visibilidad |
+| maestro_id | uuid | ref Keycloak |
+| almacenero_id | uuid | ref Keycloak |
+| estado | varchar | `SIN_CONTRATO`, `EN_EJECUCION` |
+| fecha_inicio | date | |
+| plazo_dias | int | |
+| monto_contrato | numeric(14,2) | |
+| avance_pct | numeric(5,2) | misma regla que Obras |
+| plazo_pct | numeric(5,2) | se recalcula a diario |
+| riesgo_retraso | numeric(4,3) | probabilidad 0 a 1 (402); null sin predicción |
+| nivel_riesgo | varchar | `BAJO`, `MEDIO`, `ALTO`, `SIN_DATOS` (402) |
+| actualizado_en | timestamptz | |
+
+Índice: `residente_id`.
+
+### rpt_planilla
+| Campo | Tipo | Notas |
+|---|---|---|
+| planilla_id | uuid | PK |
+| obra_id | uuid | índice |
+| periodo | char(7) | `AAAA-MM`; null si solo se conoce por una observación |
+| estado | varchar | `APROBADA`, `OBSERVADA` |
+| neto | numeric(14,2) | |
+| monto_periodo | numeric(14,2) | Σ montos de las líneas |
+| avance_periodo_pct | numeric(5,2) | monto_periodo / monto_contrato × 100 |
+| veces_observada | int | por defecto 0 |
+| ultimo_motivo | text | |
+| ultimo_origen | varchar | `CLIENTE`, `SAGA` |
+| aprobada_en | timestamptz | `ocurridoEn` de `PlanillaAprobada`; null si la trajo la carga inicial |
+| cargada_en | timestamptz | momento en que la carga inicial leyó la planilla; null si solo llegó por eventos |
+| actualizado_en | timestamptz | |
+
+### rpt_consumo_material
+| Campo | Tipo | Notas |
+|---|---|---|
+| obra_id | uuid | PK (compuesta) |
+| periodo | char(7) | PK |
+| material_id | varchar | PK, ref Materiales |
+| partida_id | uuid | PK, ref Obras |
+| cantidad | numeric(14,3) | suma de salidas |
+| monto | numeric(14,2) | suma de cantidad × precio referencial |
+| salidas | int | número de salidas |
+| actualizado_en | timestamptz | |
+
+### rpt_movimiento
+| Campo | Tipo | Notas |
+|---|---|---|
+| movimiento_id | uuid | PK |
+| obra_id | uuid | |
+| material_id | varchar | |
+| partida_id | uuid | null en ingresos |
+| tipo | varchar | `INGRESO`, `SALIDA` |
+| cantidad | numeric(14,3) | |
+| precio_referencial | numeric(14,2) | null en eventos anteriores al cambio; en la carga inicial, el precio del catálogo al cargar |
+| periodo | char(7) | |
+| supera_stock | boolean | |
+| registrado_en | timestamptz | |
+
+Índices: (`obra_id`, `material_id`, `registrado_en`), (`material_id`, `tipo`) (los usa la 403).
+
+### rpt_cobro
+| Campo | Tipo | Notas |
+|---|---|---|
+| cobro_id | uuid | PK |
+| numero | varchar | de `CobroEmitido` |
+| obra_id | uuid | de `PlanillaAprobada` |
+| planilla_id | uuid | |
+| cliente_id | uuid | copia de la obra |
+| zona | varchar | copia de la obra |
+| monto | numeric(14,2) | neto de la planilla |
+| emitido_en | date | fecha de `ocurridoEn` de `CobroEmitido` en La Paz |
+| vence_en | date | |
+| estado | varchar | `PENDIENTE`, `VENCIDO` |
+| actualizado_en | timestamptz | |
+
+Las columnas que llegan por eventos distintos pueden estar null hasta que llega el otro evento.
+
+### evento_aplicado (inbox)
+| Campo | Tipo | Notas |
+|---|---|---|
+| evento_id | uuid | PK; `id` del sobre |
+| tipo | varchar | índice (`tipo`, `aplicado_en`) |
+| aplicado_en | timestamptz | |
+
+### carga_inicial
+| Campo | Tipo | Notas |
+|---|---|---|
+| carga_id | uuid | PK; también es el `X-Request-Id` de sus llamadas |
+| iniciada_en | timestamptz | |
+| terminada_en | timestamptz | null mientras corre |
+| estado | varchar | `EN_CURSO`, `TERMINADA`, `FALLIDA` |
+| obras | int | obras procesadas |
+| filas | jsonb | filas insertadas por tabla (`{"rptObraResumen": 3, "rptPlanilla": 5, "rptMovimiento": 67, "rptCobro": 3}`) |
+| error | text | servicio, obra y causa si falló |
+
+Una corrida que se cortó sin terminar queda `EN_CURSO`; la siguiente, que ya tomó el bloqueo, la marca `FALLIDA` al empezar.
+
+## `ia_db` (MongoDB)
+
+En la 401 solo se crea la conexión (`IA_MONGO_URL`, `IA_MONGO_DB`) y el registro de índices. Las colecciones las agregan la 402 (`prediccion`) y la 403 (`consumo_atipico`), y la capa 5 las de los agentes.
