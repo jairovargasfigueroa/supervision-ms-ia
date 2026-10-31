@@ -11,8 +11,8 @@ Después corre la transacción de la 401 (paso 4). Un evento ya aplicado (está 
 evaluar; un reintento repite los pasos 1 a 3 sin duplicar.
 
 Paso 5, **posterior** (después de confirmar, solo si el evento se aplicó ahora): si la salida es un consumo atípico,
-pide a la 402 recalcular el riesgo de retraso de la obra (motivo `CONSUMO_ATIPICO`). Sin la 402 no hay notificador y el
-paso no existe.
+pide a la 402 recalcular el riesgo de retraso de la obra (motivo `CONSUMO_ATIPICO`). Sin notificador, el paso no
+existe.
 """
 
 import asyncio
@@ -33,9 +33,6 @@ from ia.reportes.aplicacion.lecturas import MovimientoLeido
 from ia.reportes.dominio.valores import SALIDA
 
 registro = logging.getLogger("ia.atipicos")
-
-MOTIVO_RIESGO = "CONSUMO_ATIPICO"
-"""Motivo de la predicción de la 402 que dispara un consumo atípico."""
 
 
 @dataclass(frozen=True)
@@ -121,7 +118,7 @@ class RecalcularRiesgoTrasAtipico:
         self._repositorio = repositorio
         self._notificador = notificador
 
-    async def despues_de_aplicar(self, movimiento: MovimientoLeido, aplicado: bool) -> bool:
+    async def despues_de_aplicar(self, evento_id: str, movimiento: MovimientoLeido, aplicado: bool) -> bool:
         """`True` si pidió el recálculo.
 
         Si el recálculo falla, se registra y no se reintenta el mensaje: el evento ya quedó aplicado (un reintento no
@@ -133,7 +130,7 @@ class RecalcularRiesgoTrasAtipico:
         if consumo is None:
             return False
         try:
-            await self._notificador.recalcular(consumo.obra_id, MOTIVO_RIESGO)
+            await self._notificador.consumo_atipico(consumo.obra_id, evento_id)
         except Exception:
             registro.exception(
                 "No se pudo recalcular el riesgo de la obra %s tras un consumo atípico.", consumo.obra_id

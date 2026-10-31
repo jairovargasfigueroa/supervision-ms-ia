@@ -219,8 +219,8 @@ class NotificadorDePrueba:
         self.llamadas: list[tuple[str, str]] = []
         self.falla = falla
 
-    async def recalcular(self, obra_id: str, motivo: str) -> None:
-        self.llamadas.append((obra_id, motivo))
+    async def consumo_atipico(self, obra_id: str, evento_id: str) -> None:
+        self.llamadas.append((obra_id, evento_id))
         if self.falla:
             raise RuntimeError("la 402 no responde")
 
@@ -237,9 +237,9 @@ async def test_un_atipico_recalcula_el_riesgo_de_la_obra_una_vez(motor: AsyncEng
     evento_id = str(uuid.uuid4())
     datos = movimiento()
     await eventos.publicar("MovimientoRegistrado", datos, id_=evento_id)
-    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+    assert notificador.llamadas == [(OBRA_1, evento_id)]
     await eventos.publicar("MovimientoRegistrado", datos, id_=evento_id)  # repetido: no se aplica ni recalcula
-    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+    assert notificador.llamadas == [(OBRA_1, evento_id)]
 
 
 async def test_una_salida_normal_o_un_ingreso_no_recalculan(motor: AsyncEngine, ia_db: Base) -> None:
@@ -256,8 +256,8 @@ async def test_si_el_recalculo_falla_el_evento_queda_aplicado_sin_reintento(
     notificador = NotificadorDePrueba(falla=True)
     eventos = con_recalculo(motor, ia_db, ModeloFijo(atipica=True), notificador)
     movimiento_id = str(uuid.uuid4())
-    await eventos.publicar("MovimientoRegistrado", movimiento(movimiento_id))
-    assert notificador.llamadas == [(OBRA_1, "CONSUMO_ATIPICO")]
+    evento_id = await eventos.publicar("MovimientoRegistrado", movimiento(movimiento_id))
+    assert notificador.llamadas == [(OBRA_1, evento_id)]
     assert eventos.canal.publicados == []
     assert len(eventos.canal.confirmados) == 1
     assert await fila(motor, rpt_movimiento, movimiento_id=movimiento_id)

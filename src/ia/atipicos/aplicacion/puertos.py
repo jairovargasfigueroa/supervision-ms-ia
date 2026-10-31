@@ -91,8 +91,10 @@ class ObrasReportes(Protocol):
 class NotificadorRiesgo(Protocol):
     """Recalcula el riesgo de retraso de una obra (402) después de detectar un consumo atípico en ella.
 
-    Lo implementa la 402 (su predicción con motivo `CONSUMO_ATIPICO`). Sin la 402 no se registra ningún notificador y
-    el paso no existe.
+    Lo implementa `ia.atipicos.infraestructura.riesgo.RecalculoRiesgo402` con la predicción de la 402 (motivo
+    `CONSUMO_ATIPICO`, clave `{obraId}:{eventoId}`). Sin notificador, el paso no existe.
     """
 
-    async def recalcular(self, obra_id: str, motivo: str) -> None: ...
+    async def consumo_atipico(self, obra_id: str, evento_id: str) -> None:
+        """`evento_id`: el `id` del `MovimientoRegistrado` (idempotencia del recálculo)."""
+        ...

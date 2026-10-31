@@ -54,7 +54,7 @@ def registrar_deteccion(
         recalculo = RecalcularRiesgoTrasAtipico(repositorio, notificador)
 
         async def recalcular_riesgo(sobre: Sobre, aplicado: bool) -> None:
-            await recalculo.despues_de_aplicar(_movimiento(sobre), aplicado)
+            await recalculo.despues_de_aplicar(sobre.id, _movimiento(sobre), aplicado)
 
         consumidor.agregar_posterior(TIPO_MOVIMIENTO, recalcular_riesgo)
     return deteccion
