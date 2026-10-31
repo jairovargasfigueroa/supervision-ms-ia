@@ -9,7 +9,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Esqueleto FastAPI en el puerto 8085: `GET /salud`, Problem Details, `X-Request-Id`, registros JSON/texto; pruebas
 - [x] Validación del token con `PyJWT` (`PyJWKClient`, emisor, audiencia `plataforma-api`), roles y visibilidad por `residente_id`; pruebas con tokens firmados en la prueba
 - [x] Alembic: migración inicial de `reportes_db` (`rpt_obra_resumen`, `rpt_planilla` con `cargada_en`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro`, `evento_aplicado`, `carga_inicial`) y conexión a `ia_db`
-- [ ] Dominio de `reportes`: avance, plazo transcurrido y vencimiento con fechas fijas; pruebas
+- [x] Dominio de `reportes`: avance, plazo transcurrido y vencimiento con fechas fijas; pruebas
 - [ ] Worker: conexión `aio-pika`, cola `ia` y enlaces, inbox en la misma transacción, reintentos con `x-intentos` y `plataforma.fallidos`; pruebas con canal simulado
 - [ ] Proyecciones de los 6 eventos como casos de uso compartidos (idempotentes por fila; bloqueo de la fila de la obra en `PlanillaAprobada` y `PlanillaObservada`; `MovimientoRegistrado` suma solo si insertó; orden indistinto de `CobroEmitido` y `PlanillaAprobada`); pruebas con PostgreSQL real
 - [ ] Tareas programadas (00:20 cobros vencidos, 00:30 plazo) con `apscheduler`; pruebas de las funciones que llaman
