@@ -60,3 +60,14 @@ def test_evalua_con_puntaje_entre_0_y_1_y_motivos_solo_si_es_atipica() -> None:
         assert (1 <= len(evaluacion.motivos) <= 3) if evaluacion.atipica else evaluacion.motivos == []
     assert modelo.evaluar(rara).atipica
     assert modelo.evaluar(rara).puntaje > modelo.evaluar(normal).puntaje
+
+
+def test_la_version_actual_del_repositorio_carga_y_cumple_las_metricas() -> None:
+    from ia.atipicos.infraestructura.modelo import RAIZ_MODELOS
+
+    modelo = cargar_modelo()
+    assert modelo.version == version_actual() == "ca-1.0.0"
+    metricas = json.loads((RAIZ_MODELOS / "ca-1.0.0" / "metricas.json").read_text(encoding="utf-8"))
+    assert metricas["fallas"] == []
+    assert metricas["sensibilidad"] >= 0.70
+    assert metricas["modelo"]["max_samples"] == 4096

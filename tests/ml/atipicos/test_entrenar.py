@@ -73,6 +73,7 @@ def test_sintetico_que_cumple_escribe_los_artefactos_y_cambia_actual(tmp_path: P
         "tipo": "IsolationForest",
         "n_estimators": 200,
         "contamination": 0.02,
+        "max_samples": 4096,
         "random_state": 2026,
     }
     assert metricas["fallas"] == []

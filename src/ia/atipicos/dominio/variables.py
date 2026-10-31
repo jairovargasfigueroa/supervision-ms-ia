@@ -11,12 +11,16 @@ Decisiones donde el diseño calla (documentadas aquí y en el README):
 - `razon_periodo`: el «promedio mensual de los periodos anteriores» es el promedio de los periodos anteriores en los
   que hubo salidas de ese material en la obra.
 - Sin salida anterior del material en la obra, `log_horas_anterior` usa el máximo (720 h).
+
+Variables agregadas por decisión de Jairo (31/10/2026) para describir las ráfagas, que con las del diseño no se
+distinguían de un día normal con varias salidas: `salidas_1h` y `salidas_3h` (salidas del mismo material en la obra en
+la última hora y en las últimas 3 horas, incluida esta).
 """
 
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from statistics import mean, median
 from zoneinfo import ZoneInfo
 
@@ -51,6 +55,8 @@ NOMBRES_VARIABLES: tuple[str, ...] = (
     "supera_stock",
     "log_horas_anterior",
     "salidas_dia",
+    "salidas_1h",
+    "salidas_3h",
 )
 """Orden de las columnas del modelo (entrenar y evaluar)."""
 
@@ -102,6 +108,10 @@ class VariablesSalida:
     supera_stock: int
     log_horas_anterior: float
     salidas_dia: int
+    salidas_1h: int
+    """Salidas del mismo material en la obra en la última hora (incluida esta): describe las ráfagas."""
+    salidas_3h: int
+    """Ídem en las últimas 3 horas."""
     # Datos para escribir los motivos (no entran al modelo).
     veces_obra_material: float | None
     """Cantidad / mediana de la misma obra y material; `None` si la obra tiene menos de 5 salidas del material."""
@@ -162,6 +172,8 @@ def calcular_variables_salida(
         if previa.registrado_en.astimezone(local.tzinfo).date() != dia:
             break
         salidas_dia += 1
+    salidas_1h = 1 + _recientes(obra_material, salida.registrado_en, timedelta(hours=1))
+    salidas_3h = 1 + _recientes(obra_material, salida.registrado_en, timedelta(hours=3))
 
     return VariablesSalida(
         log_cantidad=math.log1p(cantidad),
@@ -175,10 +187,22 @@ def calcular_variables_salida(
         supera_stock=int(salida.supera_stock),
         log_horas_anterior=math.log1p(horas),
         salidas_dia=salidas_dia,
+        salidas_1h=salidas_1h,
+        salidas_3h=salidas_3h,
         veces_obra_material=veces_obra,
         hora_local=f"{local.hour:02d}:{local.minute:02d}",
         minutos_anterior=minutos_anterior,
     )
+
+
+def _recientes(obra_material: Sequence[SalidaPrevia], momento: datetime, ventana: timedelta) -> int:
+    """Salidas anteriores dentro de `ventana` antes de `momento` (el historial está en orden de fecha)."""
+    cantidad = 0
+    for previa in reversed(obra_material):
+        if momento - previa.registrado_en > ventana:
+            break
+        cantidad += 1
+    return cantidad
 
 
 def _z_robusto(cantidad: float, grupo: Sequence[float]) -> float:

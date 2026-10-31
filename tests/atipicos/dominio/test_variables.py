@@ -61,6 +61,7 @@ def test_historial_vacio_usa_los_valores_neutros() -> None:
     assert v.log_horas_anterior == pytest.approx(math.log1p(720))
     assert v.minutos_anterior is None
     assert v.salidas_dia == 1
+    assert (v.salidas_1h, v.salidas_3h) == (1, 1)
     assert v.veces_obra_material is None
     assert (v.fuera_horario, v.domingo, v.supera_stock) == (0, 0, 0)
     assert v.hora_local == "10:00"
@@ -164,6 +165,7 @@ def test_horas_desde_la_anterior_y_salidas_del_dia() -> None:
     assert v.minutos_anterior == pytest.approx(30)
     assert v.log_horas_anterior == pytest.approx(math.log1p(0.5))
     assert v.salidas_dia == 3
+    assert (v.salidas_1h, v.salidas_3h) == (2, 3)  # 09:30 está en la última hora; 07:00, en las últimas 3
     # Más de 720 h: se limita.
     lejos = Historial(obra_material=[SalidaPrevia(10, ahora - timedelta(days=60))])
     assert calcular_variables_salida(salida(registrado_en=ahora), lejos).log_horas_anterior == pytest.approx(
@@ -193,3 +195,18 @@ def test_recorrer_en_orden_no_compara_salidas_del_mismo_instante() -> None:
     )
     assert [s.movimiento_id for s, _ in resultado] == ["a", "b", "c"]
     assert [v.salidas_dia for _, v in resultado] == [1, 1, 3]
+
+
+def test_rafaga_cuenta_las_salidas_de_la_ultima_hora_con_el_borde_incluido() -> None:
+    ahora = local(11, 10)
+    historial = Historial(
+        obra_material=[
+            SalidaPrevia(10, ahora - timedelta(hours=3, seconds=1)),  # fuera de las 3 h
+            SalidaPrevia(10, ahora - timedelta(hours=3)),
+            SalidaPrevia(10, ahora - timedelta(hours=1)),  # justo una hora antes: cuenta
+            SalidaPrevia(10, ahora - timedelta(minutes=20)),
+            SalidaPrevia(10, ahora - timedelta(minutes=5)),
+        ]
+    )
+    v = calcular_variables_salida(salida(registrado_en=ahora), historial)
+    assert (v.salidas_1h, v.salidas_3h) == (4, 5)

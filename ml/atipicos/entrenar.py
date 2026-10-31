@@ -55,7 +55,14 @@ from ia.config import Configuracion
 from ml.atipicos.generar import PARAMETROS, SALIDA_CSV
 
 SEMILLA = 2026
-PARAMETROS_MODELO: dict[str, Any] = {"n_estimators": 200, "contamination": 0.02, "random_state": SEMILLA}
+# `max_samples` = 4096 (decisión de Jairo, 31/10/2026; el de scikit-learn es 256): con muestras de 256, las salidas
+# de noche, en domingo o en ráfaga casi nunca aparecen en la muestra de un árbol y el bosque no las aísla.
+PARAMETROS_MODELO: dict[str, Any] = {
+    "n_estimators": 200,
+    "contamination": 0.02,
+    "max_samples": 4096,
+    "random_state": SEMILLA,
+}
 PROPORCION_PRUEBA = 0.2
 
 # Métricas mínimas sobre el 20 % de prueba sintético (decisión del equipo).
@@ -81,8 +88,8 @@ class Resultado:
 # Datos.
 
 
-def leer_csv(ruta: Path) -> tuple[np.ndarray, np.ndarray, list[str]]:
-    """Variables, marca `anomalia` y obra de cada fila del CSV sintético."""
+def leer_csv(ruta: Path) -> tuple[np.ndarray, np.ndarray, list[str], list[str]]:
+    """Variables, marca `anomalia`, obra y tipo de anomalía de cada fila del CSV sintético."""
     if not ruta.is_file():
         raise EntrenamientoFallido(f"No existe {ruta}: genera los datos con «python -m ml.atipicos.generar».")
     with ruta.open(encoding="utf-8") as archivo:
@@ -91,7 +98,7 @@ def leer_csv(ruta: Path) -> tuple[np.ndarray, np.ndarray, list[str]]:
         raise EntrenamientoFallido(f"{ruta} no tiene filas.")
     x = np.array([[float(fila[nombre]) for nombre in NOMBRES_VARIABLES] for fila in filas], dtype=float)
     y = np.array([int(fila["anomalia"]) for fila in filas], dtype=int)
-    return x, y, [fila["obra_id"] for fila in filas]
+    return x, y, [fila["obra_id"] for fila in filas], [fila.get("tipo_anomalia") or "" for fila in filas]
 
 
 def variables_de(salidas: Sequence[SalidaMaterial]) -> np.ndarray:
@@ -123,7 +130,9 @@ def nuevo_modelo() -> IsolationForest:
 # Entrenamientos.
 
 
-def entrenar_sintetico(x: np.ndarray, y: np.ndarray, obras: Sequence[str]) -> Resultado:
+def entrenar_sintetico(
+    x: np.ndarray, y: np.ndarray, obras: Sequence[str], tipos: Sequence[str] | None = None
+) -> Resultado:
     prueba = dividir_por_obra(obras)
     if prueba.all() or not prueba.any():
         raise EntrenamientoFallido("Hacen falta al menos 2 obras para dividir 80 % / 20 %.")
@@ -143,6 +152,11 @@ def entrenar_sintetico(x: np.ndarray, y: np.ndarray, obras: Sequence[str]) -> Re
         "auc_roc": float(roc_auc_score(y_prueba, puntaje)) if 0 < anomalas.sum() < len(y_prueba) else 0.0,
         "proporcion_marcada": float(marcadas.mean()),
     }
+    if tipos is not None:
+        tipos_prueba = np.array(tipos)[prueba]
+        metricas["sensibilidad_por_tipo"] = {
+            tipo: float(marcadas[tipos_prueba == tipo].mean()) for tipo in sorted(set(tipos_prueba) - {""})
+        }
     metricas["minimos"] = {
         "sensibilidad": MINIMA_SENSIBILIDAD,
         "precision": MINIMA_PRECISION,
@@ -198,7 +212,7 @@ def guardar(resultado: Resultado, version: str, raiz: Path, fuente: str, segundo
     if temporal.exists():
         shutil.rmtree(temporal)
     temporal.mkdir(parents=True)
-    joblib.dump(resultado.modelo, temporal / ARCHIVO_MODELO)
+    joblib.dump(resultado.modelo, temporal / ARCHIVO_MODELO, compress=3)
     (temporal / ARCHIVO_PERCENTILES).write_text(
         json.dumps(resultado.percentiles.como_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
@@ -255,8 +269,8 @@ async def entrenar_con_reales(config: Configuracion) -> Resultado:
 
 
 def entrenar_con_sinteticos(datos: Path, parametros: Path) -> Resultado:
-    x, y, obras = leer_csv(datos)
-    resultado = entrenar_sintetico(x, y, obras)
+    x, y, obras, tipos = leer_csv(datos)
+    resultado = entrenar_sintetico(x, y, obras, tipos)
     resultado.parametros = {
         "fuente": "sintetica",
         "datos": datos.name,

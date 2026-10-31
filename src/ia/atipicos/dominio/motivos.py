@@ -74,6 +74,11 @@ def motivos_consumo(variables: VariablesSalida, percentiles: Percentiles) -> lis
         agregar(1.0, "Se registró en domingo")
     if variables.supera_stock:
         agregar(1.0, "Salió más material del que había en stock")
+    if variables.salidas_1h >= 2 and variables.salidas_1h >= p99["salidas_1h"]:
+        agregar(
+            _fuerza_mayor(variables.salidas_1h, p99["salidas_1h"]),
+            f"Hubo {variables.salidas_1h} salidas de este material en la última hora",
+        )
     if variables.salidas_dia >= 2 and variables.salidas_dia >= p99["salidas_dia"]:
         agregar(
             _fuerza_mayor(variables.salidas_dia, p99["salidas_dia"]),

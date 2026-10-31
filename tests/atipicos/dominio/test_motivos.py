@@ -19,6 +19,8 @@ P99 = {
     "supera_stock": 0.0,
     "log_horas_anterior": 6.58,
     "salidas_dia": 3.0,
+    "salidas_1h": 2.0,
+    "salidas_3h": 3.0,
 }
 P1 = {**{nombre: 0.0 for nombre in NOMBRES_VARIABLES}, "log_horas_anterior": 0.7}
 PERCENTILES = Percentiles(p1=P1, p99=P99)
@@ -35,6 +37,8 @@ NORMAL = VariablesSalida(
     supera_stock=0,
     log_horas_anterior=3.2,
     salidas_dia=1,
+    salidas_1h=1,
+    salidas_3h=1,
     veces_obra_material=1.05,
     hora_local="10:00",
     minutos_anterior=1440.0,
@@ -63,6 +67,7 @@ def test_cada_regla_tiene_su_texto() -> None:
         ({"domingo": 1}, "Se registró en domingo"),
         ({"supera_stock": 1}, "Salió más material del que había en stock"),
         ({"salidas_dia": 5}, "Hubo 5 salidas de este material el mismo día"),
+        ({"salidas_1h": 4}, "Hubo 4 salidas de este material en la última hora"),
         ({"log_horas_anterior": 0.2, "minutos_anterior": 13.4}, "Salida muy seguida de la anterior (13 minutos)"),
         ({"log_horas_anterior": 0.01, "minutos_anterior": 1.0}, "Salida muy seguida de la anterior (1 minuto)"),
     ]

@@ -53,9 +53,11 @@ uv run python -m ml.atipicos.entrenar --fuente real --version ca-1.1.0       # r
 
 `entrenar` termina con código 1 y no cambia `actual.txt` si no se cumplen las métricas mínimas (diseño de la 403). Parámetros del generador: `ml/atipicos/parametros.yaml`.
 
-Tiempo medido el 31/10/2026 en la computadora del equipo (Intel Core i7-11370H, 8 hilos, sin GPU), con la semilla 2026: generar las 48 849 salidas tarda 5,2 s y entrenar (leer el CSV, ajustar y medir) 3,6 s; los dos comandos completos, con el arranque de Python y la importación de scikit-learn, 14 s (objetivo: menos de un minuto).
+Variables: las 11 del diseño más `salidas_1h` y `salidas_3h` (salidas del mismo material en la obra en la última hora y en las últimas 3 horas, incluida esta), y `IsolationForest(n_estimators=200, contamination=0.02, max_samples=4096, random_state=2026)`. Decisión de Jairo (31/10/2026): con solo las variables del diseño y `max_samples` de 256 (el de scikit-learn) la sensibilidad era 0,53, porque las ráfagas no se distinguían de un día normal con varias salidas y las salidas de noche o en domingo casi nunca entraban en la muestra de 256 de cada árbol. Motivo nuevo: «Hubo X salidas de este material en la última hora».
 
-Métricas de `ca-1.0.0` sobre el 20 % de prueba (semilla 2026): sensibilidad 0,53 (mínimo 0,70), precisión 0,53, AUC-ROC 0,94 y 2,3 % marcadas. **No cumple la sensibilidad mínima**, así que `ca-1.0.0` todavía no está versionado (ver la nota de la 403 en `docs/specs/403-consumos-atipicos/tareas.md`).
+Métricas de `ca-1.0.0` sobre el 20 % de prueba (semilla 2026): sensibilidad 0,72 (mínimo 0,70), precisión 0,80 (mínimo 0,50), AUC-ROC 0,97 (mínimo 0,85) y 2,1 % marcadas (de 1 % a 3 %). Sensibilidad por tipo: CANTIDAD 0,81, HORARIO 0,98, RAFAGA 0,41 (la primera salida de una ráfaga no se distingue de una normal) y STOCK 0,81. Con otras semillas del generador (1 a 4) la sensibilidad va de 0,65 a 0,75: está cerca del mínimo.
+
+Tiempo medido el 31/10/2026 en la computadora del equipo (Intel Core i7-11370H, 8 hilos, sin GPU), con la semilla 2026: generar las 48 849 salidas tarda 4,8 s y entrenar (leer el CSV, ajustar, medir y guardar) 1,6 s; los dos comandos completos, con el arranque de Python y la importación de scikit-learn, 15 s (objetivo: menos de un minuto).
 
 ## Docker
 

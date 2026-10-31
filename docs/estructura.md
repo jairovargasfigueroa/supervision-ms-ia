@@ -64,7 +64,7 @@ src/ia/
   riesgo/                         (402) módulo hermano, misma división
   atipicos/                       (403) consumos de material atípicos (Isolation Forest)
     dominio/
-      variables.py                SalidaMaterial, Historial, calcular_variables_salida() (las 11 variables)
+      variables.py                SalidaMaterial, Historial, calcular_variables_salida() (13 variables, con salidas_1h y salidas_3h)
       historial.py                HistorialEnMemoria, recorrer_en_orden() (generador y reentrenamiento)
       motivos.py                  Percentiles, motivos_consumo() (1 a 3 motivos)
       revision.py                 reglas del comentario y de los estados de la revisión
