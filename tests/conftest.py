@@ -16,5 +16,5 @@ def pytest_asyncio_loop_factories(
     return {"asyncio": asyncio.new_event_loop}
 
 
-# Fixtures de PostgreSQL real (Testcontainers o IA_PRUEBAS_DB_URL).
-pytest_plugins = ["apoyo.base_datos"]
+# Fixtures de PostgreSQL y MongoDB reales (Testcontainers, o IA_PRUEBAS_DB_URL e IA_PRUEBAS_MONGO_URL).
+pytest_plugins = ["apoyo.base_datos", "apoyo.mongo"]

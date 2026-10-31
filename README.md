@@ -35,11 +35,27 @@ uv run ia-api                        # API en http://localhost:8085 (GET /salud)
 uv run ia-worker                     # consumidor de la cola «ia» y tareas programadas
 uv run ia-carga-inicial              # carga inicial (una vez, con Obras, Materiales y Finanzas levantados)
 
-uv run pytest -q                     # pruebas (las de integración levantan PostgreSQL con Testcontainers)
+uv run pytest -q                     # pruebas (las de integración levantan PostgreSQL y MongoDB con Testcontainers)
 uv run ruff check . ; uv run ruff format --check . ; uv run mypy
 ```
 
-Las pruebas de integración necesitan Docker (Testcontainers con `postgres:17-alpine`). Para usar otra base vacía en su lugar: `IA_PRUEBAS_DB_URL=postgresql+psycopg://usuario:clave@host:puerto/base_vacia`.
+Las pruebas de integración necesitan Docker (Testcontainers con `postgres:17-alpine` y `mongo:8.0`). Para usar otra base vacía en su lugar: `IA_PRUEBAS_DB_URL=postgresql+psycopg://usuario:clave@host:puerto/base_vacia` e `IA_PRUEBAS_MONGO_URL=mongodb://usuario:clave@host:puerto` (usa la base `ia_db_pruebas` y la borra en cada prueba).
+
+## Modelo de consumos atípicos (403)
+
+Isolation Forest de scikit-learn, solo con CPU. Los artefactos de cada versión van en `modelos/consumos_atipicos/<version>/` (`modelo.joblib`, `percentiles.json`, `metricas.json`, `parametros.yaml`) y `modelos/consumos_atipicos/actual.txt` dice cuál carga el worker (o `IA_MODELO_ATIPICOS_VERSION`). Sin modelo, el worker registra el error y sigue sin detectar.
+
+```powershell
+uv run python -m ml.atipicos.generar --semilla 2026                          # ml/atipicos/datos/salidas_sinteticas.csv (no se versiona)
+uv run python -m ml.atipicos.entrenar --fuente sintetica --version ca-1.0.0
+uv run python -m ml.atipicos.entrenar --fuente real --version ca-1.1.0       # requiere ≥ 500 salidas en rpt_movimiento
+```
+
+`entrenar` termina con código 1 y no cambia `actual.txt` si no se cumplen las métricas mínimas (diseño de la 403). Parámetros del generador: `ml/atipicos/parametros.yaml`.
+
+Tiempo medido el 31/10/2026 en la computadora del equipo (Intel Core i7-11370H, 8 hilos, sin GPU), con la semilla 2026: generar las 48 849 salidas tarda 5,2 s y entrenar (leer el CSV, ajustar y medir) 3,6 s; los dos comandos completos, con el arranque de Python y la importación de scikit-learn, 14 s (objetivo: menos de un minuto).
+
+Métricas de `ca-1.0.0` sobre el 20 % de prueba (semilla 2026): sensibilidad 0,53 (mínimo 0,70), precisión 0,53, AUC-ROC 0,94 y 2,3 % marcadas. **No cumple la sensibilidad mínima**, así que `ca-1.0.0` todavía no está versionado (ver la nota de la 403 en `docs/specs/403-consumos-atipicos/tareas.md`).
 
 ## Docker
 
