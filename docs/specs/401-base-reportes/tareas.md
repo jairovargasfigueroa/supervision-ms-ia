@@ -5,7 +5,7 @@ Requisitos y diseño: `docs/specs/401-base-reportes/` de `supervision-docs` (car
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Proyecto: `pyproject.toml` con `uv` y Python 3.12, `.env.example` (incluidas `IA_OBRAS_URL`, `IA_MATERIALES_URL`, `IA_FINANZAS_URL`, `IA_REPORTES_CLIENT_ID` e `IA_REPORTES_CLIENT_SECRET`), `.gitignore`, `Dockerfile` (una imagen, tres comandos: `ia-api`, `ia-worker` e `ia-carga-inicial`)
-- [ ] `CLAUDE.md` del proyecto y `docs/` (`estructura.md`, `servicio.md`, `datos.md`, `contratos.md`, `specs/README.md`) con lo de esta spec (CQRS: modelo de lectura alimentado por eventos; DDD + hexagonal ligera)
+- [x] `CLAUDE.md` del proyecto y `docs/` (`estructura.md`, `servicio.md`, `datos.md`, `contratos.md`, `specs/README.md`) con lo de esta spec (CQRS: modelo de lectura alimentado por eventos; DDD + hexagonal ligera)
 - [ ] Esqueleto FastAPI en el puerto 8085: `GET /salud`, Problem Details, `X-Request-Id`, registros JSON/texto; pruebas
 - [ ] Validación del token con `PyJWT` (`PyJWKClient`, emisor, audiencia `plataforma-api`), roles y visibilidad por `residente_id`; pruebas con tokens firmados en la prueba
 - [ ] Alembic: migración inicial de `reportes_db` (`rpt_obra_resumen`, `rpt_planilla` con `cargada_en`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro`, `evento_aplicado`, `carga_inicial`) y conexión a `ia_db`
