@@ -14,6 +14,10 @@ uv run python -m ml.riesgo.entrenar --fuente real --archivo <ruta.csv> --version
 - El servicio carga la versión de `actual.txt` (o la de `IA_MODELO_RIESGO_VERSION`) al arrancar: después de publicar una versión, reinicia `ia-api` e `ia-worker`.
 - En Windows, si la consola muestra mal los acentos, corre con `PYTHONIOENCODING=utf-8`.
 
+## Gráficos para el documento
+
+`exploracion.ipynb` dibuja la curva ROC (modelo frente a la regla) y la importancia de las variables con el modelo publicado y el mismo 20 % de prueba. Necesita el grupo opcional: `uv sync --group notebook` y el CSV de `generar`.
+
 ## Datos sintéticos
 
 `generar.py` simula obras completas mes a mes con las reglas de `parametros.yaml` (semilla 2026): curva S planificada, eficiencia oculta, lluvia de diciembre a marzo, problemas de material (consumos atípicos y salidas sin stock) y observaciones de planillas (una planilla observada se aprueba al mes siguiente, junto con el avance de ese mes, y no se vuelve a observar); sigue después del plazo hasta llegar a 100 % para conocer la etiqueta. En 3 días al azar por obra (5 % a 95 % del plazo) arma el estado de la obra y llama a `calcular_variables` (`src/ia/riesgo/dominio/variables.py`), la misma función que usa el servicio.

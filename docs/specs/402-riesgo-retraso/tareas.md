@@ -11,4 +11,4 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Carga del modelo y predicción con factores (`pred_contribs`); colección `prediccion` con índice único por `clave`; pruebas
 - [x] Disparadores en el worker (tras `PlanillaAprobada`, `PlanillaObservada`, `ContratoRegistrado`), predicción de todas las obras al final de la carga inicial (`CARGA_INICIAL`) y tarea diaria de la 01:00; actualización de `rpt_obra_resumen`; pruebas
 - [x] Endpoints `GET /predicciones`, `GET /obras/{obraId}/prediccion` (con `SIN_DATOS` para obras visibles sin predicción) y `GET /modelos/riesgo-retraso` (`datos` `SINTETICOS` o `REALES`) con visibilidad y errores; pruebas
-- [ ] Notebook `ml/riesgo/exploracion.ipynb` con la curva ROC y la importancia de variables para el documento
+- [x] Notebook `ml/riesgo/exploracion.ipynb` con la curva ROC y la importancia de variables para el documento
