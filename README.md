@@ -68,3 +68,34 @@ docker build -t supervision-ia .
 docker run --env-file .env -p 8085:8085 supervision-ia
 docker run --env-file .env supervision-ia ia-carga-inicial
 ```
+
+## Prueba manual con el modelo real (capa 5)
+
+Prueba manual completa pendiente (decisión de Jairo, 01/11/2026); con qwen3:8b la interpretación queda cerca del límite de 20 s.
+
+Mediciones parciales del 01/11/2026 con Ollama (`qwen3:8b` Q4_K_M, contexto 16384, RTX 3060 Laptop de 6 GB: el modelo queda 64 % en la GPU), datos de prueba recién cargados (D = 2026-11-01). Anthropic sin probar (falta la clave).
+
+**Calentar el modelo antes de usarlo.** La primera carga tardó de 135 a 166 s (las siguientes, de 49 a 67 s). Si la primera consulta llega con el modelo sin cargar, se corta a los 20 s y Ollama no termina de cargarlo. Antes de probar:
+
+```sh
+curl -s http://127.0.0.1:11434/api/chat -d '{"model":"qwen3:8b","messages":[{"role":"user","content":"ok"}],"think":false,"stream":false,"keep_alive":"30m","options":{"num_ctx":16384}}'
+```
+
+**Reportes por voz (503).**
+
+- Interpretación (unas 2600 fichas de entrada): de 1,7 a 26,8 s. De las 15 preguntas del dominio, 5 se cortaron a los 20 s en el servicio. Sin límite (solo para medir): media de 15,7 s, máximo de 26,8 s y 5 de 15 por encima de 20 s; el tiempo lo marca la salida (unas 6 fichas por segundo).
+- Recetas: **2 de 15 válidas** («Promedio de avance por zona», «¿Cuántos consumos atípicos hay por obra?»), también sin límite de tiempo. Errores repetidos del modelo (`422 RECETA_INVALIDA`): métricas sin `agruparPor` (6), `EN` con un valor que no es lista (6), `columnas` junto con `agruparPor` (4), `CONTEO` con campo (2), filtros que no existen (2), orden por una columna fuera de la salida (1). `validar_receta` las rechazó todas bien.
+- Las 5 preguntas que no corresponden a ningún conjunto: las 5 con `422 INTENCION_NO_RECONOCIDA`, en 1,7 a 5,4 s.
+- Atajos: **10 de 10** respondieron con las cifras esperadas de los datos de prueba, en 4,5 a 23 s, con resumen del modelo en los 10. Un resumen con una cifra mal (`COBROS_POR_VENCER`: «promedio de 28 días», es 14) y tres confusos (`AVANCE_OBRAS` suma la columna «Diferencia», `SALIDAS_SIN_STOCK` mezcla el conteo con la cantidad y `CONSUMOS_ATIPICOS_PENDIENTES` suma el puntaje).
+- Experimento con contexto de 8192 (sin cambiar el servicio): el modelo queda un 70 % en la GPU; interpretación con media de 12,7 s, máximo de 20,4 s y 1 de 15 por encima de 20 s, pero con las mismas **2 de 15 recetas válidas**.
+
+**Agentes (502).** Una ejecución de cada agente, sin pasar nunca de 8 llamadas ni de 3 minutos. Cada vuelta de `conversar` tardó de 10 a 46 s (de 2300 a 3400 fichas de entrada).
+
+| Agente | Resultado | Pasos | Tiempo |
+|---|---|---|---|
+| Seguimiento de obras | `FALLIDA` (`LLM_NO_DISPONIBLE`): la segunda vuelta y el reporte se cortaron a los 60 s | 3 iniciales y 3 `buscar_diario`, sin errores | 2 min 51 s |
+| Control de materiales | `TERMINADA`, sin hallazgos ni sugerencias («No se encontraron hallazgos…»), aunque había `CEM-IP30` `BAJO` y un consumo atípico pendiente | 3 iniciales y 3 `consumos_partida` | 1 min 58 s |
+| Control de cobros | `FALLIDA` (`LLM_NO_DISPONIBLE`): el reporte se cortó a los 60 s | 2 iniciales y un `consultar_reporte` que el host rechazó (`ARGUMENTO_INVALIDO`) sin llamar al servidor | 1 min 41 s |
+
+**Entradas maliciosas (504).** No se corrieron contra el modelo real; están cubiertas con el modelo simulado en `tests/seguridad/`.
+

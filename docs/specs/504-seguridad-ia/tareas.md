@@ -11,4 +11,4 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Pruebas S1 a S18 (reportes)
 - [x] Pruebas G1 a G14 (agentes)
 - [x] Pruebas M1 a M6 del servidor MCP de IA y K1 y K2 (secretos)
-- [ ] Prueba manual con 10 entradas maliciosas contra el modelo real, con cada proveedor (Ollama y Anthropic), con resultados en el README
+- [ ] Prueba manual con 10 entradas maliciosas contra el modelo real, con cada proveedor (Ollama y Anthropic), con resultados en el README (pendiente por decisión de Jairo, 01/11/2026; mediciones parciales con Ollama en el README)
