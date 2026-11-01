@@ -138,9 +138,9 @@ class EjecutorAgente:
         try:
             reporte = await self._reporte(estado, mensajes, opciones)
         except ErrorLlm as error:
-            await self._fallar(
-                ejecucion, LLM_NO_DISPONIBLE, f"El modelo de lenguaje no respondió ({type(error).__name__})."
-            )
+            # El tipo de error va solo al registro; el mensaje guardado es para personas (docs/mensajes.md).
+            registro.warning("El modelo no respondió al pedir el reporte de %s: %s", ejecucion.id, type(error).__name__)
+            await self._fallar(ejecucion, LLM_NO_DISPONIBLE, "El modelo de lenguaje no respondió.")
             return
         if reporte is None:
             await self._fallar(ejecucion, REPORTE_INVALIDO, "El modelo no logró un reporte válido en dos intentos.")
@@ -179,9 +179,8 @@ class EjecutorAgente:
                 publicadas = await estado.sesion.listar(servidor)
             except FalloMcp as error:
                 estado.caidos.append(servidor)
-                await self._paso(
-                    estado, servidor, "tools/list", {}, "", en, inicio, f"{SERVIDOR_NO_DISPONIBLE}: {error}"
-                )
+                registro.warning("tools/list de %s falló en %s: %s", servidor, estado.ejecucion.id, error)
+                await self._paso(estado, servidor, "tools/list", {}, "", en, inicio, SERVIDOR_NO_DISPONIBLE)
                 continue
             for herramienta in aceptadas(servidor, publicadas):
                 if herramienta.nombre in estado.agente.herramientas:
@@ -208,13 +207,14 @@ class EjecutorAgente:
             resultado = await estado.sesion.llamar(servidor, nombre, argumentos)
         except FalloMcp as error:
             estado.caidos.append(servidor)
-            await self._paso(estado, servidor, nombre, argumentos, "", en, inicio, f"{SERVIDOR_NO_DISPONIBLE}: {error}")
+            registro.warning("%s de %s falló en %s: %s", nombre, servidor, estado.ejecucion.id, error)
+            await self._paso(estado, servidor, nombre, argumentos, "", en, inicio, SERVIDOR_NO_DISPONIBLE)
             return self._error_para_modelo(nombre, SERVIDOR_NO_DISPONIBLE, "El servidor no respondió."), True
 
         texto = json.dumps(resultado.datos, ensure_ascii=False, default=str)
         if resultado.es_error:
             await self._paso(
-                estado, servidor, nombre, argumentos, texto, en, inicio, resultado.codigo or "ERROR_HERRAMIENTA"
+                estado, servidor, nombre, argumentos, texto, en, inicio, resultado.codigo or "ERROR_INTERNO"
             )
         else:
             estado.con_exito.add(nombre)

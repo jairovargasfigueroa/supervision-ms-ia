@@ -148,6 +148,7 @@ async def test_llm_caido_es_fallida(ia_db: AsyncDatabase[dict[str, Any]]) -> Non
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
     assert ejecucion.error.codigo == "LLM_NO_DISPONIBLE"
+    assert ejecucion.error.mensaje == "El modelo de lenguaje no respondió."  # sin nombres técnicos (mensajes.md)
 
 
 async def test_limite_de_tiempo_total(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
@@ -157,3 +158,21 @@ async def test_limite_de_tiempo_total(ia_db: AsyncDatabase[dict[str, Any]]) -> N
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
     assert ejecucion.error.codigo == "EJECUCION_TIEMPO_AGOTADO"
+
+
+async def test_paso_con_servidor_caido_y_error_de_herramienta_guardan_solo_el_codigo(
+    ia_db: AsyncDatabase[dict[str, Any]],
+) -> None:
+    from agentes.apoyo_agentes import servidores_de_prueba
+
+    servidores = servidores_de_prueba()
+    servidores["finanzas"].caido = True
+    modelo = ModeloSimulado(json_=[LlmNoDisponible("caído")], conversacion=["Listo."])
+    async with entorno(ia_db, modelo, servidores=servidores) as e:
+        ejecucion = await e.correr("CONTROL_COBROS")
+    errores = [p.error for p in ejecucion.pasos if p.error]
+    assert errores == ["SERVIDOR_NO_DISPONIBLE"]
+    assert ejecucion.error is not None
+    for texto in (ejecucion.error.mensaje, *errores):
+        for tecnico in ("Llm", "Fallo", "Error", "MCP", "Exception", "finanzas.prueba"):
+            assert tecnico not in texto, texto

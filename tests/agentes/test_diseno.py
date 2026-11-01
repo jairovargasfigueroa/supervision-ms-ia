@@ -145,7 +145,7 @@ async def test_servidor_caido_sigue_y_todos_caidos_es_sin_herramientas(ia_db: As
     assert ejecucion.estado == TERMINADA, ejecucion.error
     assert ejecucion.pasos[0].herramienta == "tools/list"
     assert ejecucion.pasos[0].servidor == "finanzas"
-    assert (ejecucion.pasos[0].error or "").startswith("SERVIDOR_NO_DISPONIBLE")
+    assert ejecucion.pasos[0].error == "SERVIDOR_NO_DISPONIBLE"  # solo el código: el detalle va al registro
     assert ejecucion.resumen is not None
     assert ejecucion.resumen.endswith("(Sin respuesta de: finanzas.)")
     assert sin_nada.estado == FALLIDA
