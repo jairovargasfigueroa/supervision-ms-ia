@@ -22,6 +22,14 @@ os.environ["IA_LLM_PROVEEDOR"] = "ollama"
 os.environ["IA_LLM_MODELO"] = ""
 os.environ["IA_OLLAMA_URL"] = "http://127.0.0.1:1"
 os.environ["IA_ANTHROPIC_API_KEY"] = ""
+# Cliente MCP y servidor MCP (501): los valores por defecto, aunque el .env local tenga otros (el secreto real nunca).
+os.environ["IA_AGENTES_CLIENT_ID"] = "ia-agentes"
+os.environ["IA_AGENTES_CLIENT_SECRET"] = ""
+os.environ["IA_OBRAS_MCP_URL"] = "http://localhost:8081/mcp"
+os.environ["IA_MATERIALES_MCP_URL"] = "http://localhost:8082/mcp"
+os.environ["IA_FINANZAS_MCP_URL"] = "http://localhost:8083/mcp"
+os.environ["IA_PROPIO_MCP_URL"] = "http://localhost:8085/mcp"
+os.environ["IA_MCP_HOSTS_PERMITIDOS"] = "localhost:8085,127.0.0.1:8085"
 
 
 def pytest_asyncio_loop_factories(
