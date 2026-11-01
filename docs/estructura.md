@@ -4,7 +4,7 @@ Obligatorio para todo el código de este servicio. Si algo no encaja, propón el
 
 ## Librerías
 
-Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. ML (403): `scikit-learn` 1 (Isolation Forest, también en el servicio), `numpy` 2, `joblib` 1 (`modelo.joblib`) y `pyyaml` 6. Modelo de lenguaje (503, lo reutiliza la 502): `ollama` 0.6 y `anthropic` 2, solo en `src/ia/lenguaje/infraestructura/`. No se agregan otras librerías para lo mismo.
+Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. ML (403): `scikit-learn` 1 (Isolation Forest, también en el servicio), `numpy` 2, `joblib` 1 (`modelo.joblib`) y `pyyaml` 6. Modelo de lenguaje (503, lo reutiliza la 502): `ollama` 0.6 y `anthropic` 2, solo en `src/ia/lenguaje/infraestructura/`. MCP (501): SDK oficial `mcp` 2 (2.3.x; servidor `MCPServer` y cliente `Client`), solo en `src/ia/mcp/`; el cliente usa `httpx2` (la dependencia HTTP del propio SDK) para mandar `Authorization` y `X-Request-Id`. No se agregan otras librerías para lo mismo.
 
 - SQLAlchemy se usa **sin ORM** (tablas de Core y `AsyncConnection`): las proyecciones son *upserts* (`INSERT … ON CONFLICT`) y bloqueos (`SELECT … FOR UPDATE`) explícitos.
 - Montos y porcentajes con `decimal.Decimal`, nunca `float`; redondeo «mitad hacia arriba» al final (`ia.reportes.dominio.indicadores.redondear`).
@@ -123,6 +123,15 @@ src/ia/
     infraestructura/consultas_mongo.py ia_db.consulta_reporte
     infraestructura/limite_mongo.py    ia_db.limite_consulta
     infraestructura/web.py             POST /consultas-reporte, GET /consultas-reporte, GET /catalogo-reportes
+  mcp/                            (501) protocolo MCP: el servicio es servidor y host (cliente) de los agentes
+    servidor/servidor.py          ServidorMcp (MCPServer del SDK): tools/list y tools/call con esquemas propios
+                                  (Pydantic, extra="forbid"), errores como resultado ({codigo, mensaje}), registro por
+                                  llamada; montar_mcp(app): ruta exacta POST /mcp (sin estado, JSON, hosts permitidos)
+    servidor/seguridad.py         SeguridadMcp (ASGI): token válido (401) y rol agente_ia (403) antes del SDK
+    servidor/herramientas.py      riesgo_retraso (402), consumos_atipicos (403), consultar_reporte (MotorReportes, 503)
+    cliente/token.py              TokenAgentes: client credentials de ia-agentes con caché hasta 30 s antes de vencer
+    cliente/cliente.py            ClienteMcp: listar_herramientas() y llamar() con Authorization, X-Request-Id y 10 s
+    cliente/catalogo.py           herramienta → servidor (4 servidores) y esquemas de entrada esperados (contrato)
   seguridad/                      (504; la usan 502 y 503) como_dato (delimitar.py), texto_seguro (limpiar.py),
                                   reglas comunes del mensaje de sistema (reglas_sistema.py)
 ml/riesgo/                        (402) generar.py, entrenar.py, parametros.yaml, README.md (formato del CSV real),
@@ -141,6 +150,14 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - Eventos: el manejador de cada tipo lo registra `reportes` (`ia.reportes.infraestructura.eventos.registrar_manejadores`). Un módulo agrega pasos con `ConsumidorMensajes.agregar_previo(tipo, paso)` (corre **antes** de la transacción de PostgreSQL; idempotente por clave, por ejemplo MongoDB de la 403) y `agregar_posterior(tipo, paso)` (corre **después** de confirmarla y solo si el evento se aplicó, por ejemplo la predicción de la 402). Si un paso falla, el mensaje se reintenta como cualquier fallo.
 - Tareas programadas: agregar el trabajo en `ia.worker` (mismo `AsyncIOScheduler`, zona del negocio).
 - Índices de MongoDB: `ia.comun.mongo.registrar_indice(...)` en el módulo (con TTL o filtro parcial si hace falta); el worker y la API los aseguran al arrancar.
+
+## MCP (capa 5, 501)
+
+- Solo `src/ia/mcp/` importa el SDK `mcp` (y `httpx2`). El servidor reutiliza los casos de uso de lectura de 402, 403 y 503; no escribe nada.
+- El servidor sobrescribe `list_tools` y `call_tool` de `MCPServer` (métodos públicos del SDK) para publicar esquemas estrictos de Pydantic (`additionalProperties: false`) y devolver `ARGUMENTO_INVALIDO` como resultado con `isError`: el registro por decorador del SDK ignora los campos de más y responde sus propios textos de error. **(decisión técnica)**
+- Se monta como ruta exacta `/mcp` de `ia-api` (no `app.mount`, que responde `307` a `POST /mcp` para agregar la barra final), detrás de `SeguridadMcp`; `ia.main.crear_app` entra en `session_manager.run()` en su *lifespan*. **(decisión técnica)**
+- `/mcp` acepta solo `agente_ia` (excepción a «solo `admin`, `gerente` y `residente`», que sigue valiendo para todas las rutas REST).
+- Las pruebas del cliente usan un servidor MCP de prueba hecho con el mismo SDK, servido por ASGI (`httpx2.ASGITransport`), sin red.
 
 ## Modelo de lenguaje (capa 5)
 

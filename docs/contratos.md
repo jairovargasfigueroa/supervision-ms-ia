@@ -125,7 +125,26 @@ Errores: 401 · 403
 
 - El modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) solo devuelve una **receta**; el código la valida contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados (usuario `ia_reportes_lector`, `READ ONLY`, 5 s). Nunca ejecuta SQL del modelo.
 
-- Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles reciben `403 SIN_PERMISO` en todo el servicio. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido).
+- Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles (también `agente_ia`) reciben `403 SIN_PERMISO` en todas las rutas REST. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido). **Excepción:** `/mcp` acepta **solo** `agente_ia` (501).
+
+## Herramientas MCP (capa 5, solo lectura) · 501
+
+```
+Ruta: POST /mcp (MCP, HTTP «streamable», sin estado, respuestas JSON; versión común 2025-11-25) · Rol: agente_ia (service account de ia-agentes) · Solo lo llama el servicio de IA
+```
+
+- `/mcp` sin token o con un token inválido → `401 NO_AUTENTICADO`; token válido sin `agente_ia` → `403 SIN_PERMISO` (Problem Details). `GET /mcp` → `405` (sin flujo SSE).
+- `tools/list` devuelve exactamente las tres herramientas, cada una con descripción, `inputSchema` y `outputSchema` (`additionalProperties: false`) y `annotations: { readOnlyHint: true, openWorldHint: false }`. Sin *resources* ni *prompts*.
+- `structuredContent` cumple el `outputSchema`; el mismo JSON va como texto en `content`.
+- Errores de herramienta (resultado con `isError: true` y texto JSON `{"codigo", "mensaje"}`): `ARGUMENTO_INVALIDO` (no cumple el esquema; no consulta la base), `OBRA_NO_ENCONTRADA`, `ERROR_INTERNO`. Una herramienta que no existe es un error del protocolo.
+- Cada llamada deja una línea en el registro con `herramienta`, `argumentos`, `filas`, `duracionMs` y `requestId` (`X-Request-Id` = id de la ejecución del agente). Nunca el token.
+
+| Herramienta | Entrada | Salida | Fuente |
+|---|---|---|---|
+| `riesgo_retraso` | `{obraIds?: uuid[1..50], niveles?: (BAJO\|MEDIO\|ALTO\|SIN_DATOS)[], limite?: 1..50 = 50}` | `{generadoEn, predicciones[{obraId, obraNombre, probabilidad, nivel, factores[{variable, descripcion, peso}], versionModelo, calculadaEn}], total, truncado}` | Obras `EN_EJECUCION` de `rpt_obra_resumen` con su última predicción (`ia_db.prediccion`, 402); probabilidad descendente, `SIN_DATOS` al final. Sin modelo o sin predicciones: `[]`. `OBRA_NO_ENCONTRADA` si un id no está en `rpt_obra_resumen` |
+| `consumos_atipicos` | `{obraId?: uuid, estados?: (PENDIENTE\|NORMAL\|CONFIRMADO)[] = [PENDIENTE], dias?: 1..90 = 30, limite?: 1..50 = 50}` | `{consumos[{movimientoId, obraId, obraNombre, materialId, partidaId, cantidad, periodo, registradoEn, puntaje, motivos[], estadoRevision}], total, truncado}` | `ia_db.consumo_atipico` (403) con `registradoEn` en los últimos `dias` (La Paz); puntaje descendente; cada motivo hasta 200 caracteres. `OBRA_NO_ENCONTRADA` si `obraId` no está en `rpt_obra_resumen` |
+| `consultar_reporte` | La receta de la 503 en modo `MCP` en el primer nivel: `{conjunto, columnas?, filtros?, agruparPor?, metricas?, orden?, limite?: 1..50 = 20}` (filtros `obraId`, `materialId`, `clienteId` por id; sin `material` ni `cliente` por nombre; sin `NINGUNO`) | `{conjunto, titulo, aplicado[{nombre, valor}], columnas[{clave, titulo, tipo}], filas[[texto\|null]], totalFilas, truncado, avisos[]}` (las columnas `material` y `cliente` traen el id) | Mismo `validar_receta` y `MotorReportes` de la 503 (usuario `ia_reportes_lector`). `ARGUMENTO_INVALIDO` con hasta 5 problemas, cada uno con su ruta; `ERROR_INTERNO` si `reportes_db` o `ia_db` no responden o la consulta pasa de 5 s |
+
 
 ## Escucha (cola `ia`, exchange `plataforma`)
 
@@ -176,3 +195,16 @@ Los nombres de los clientes no se piden a nadie: los trae el gateway en `directo
 |---|---|---|
 | `ollama` (por defecto) | `ollama` 0.6 (`AsyncClient(host=IA_OLLAMA_URL)`), modelo `IA_LLM_MODELO` (por defecto `qwen3:8b`) | Interpretar el pedido (receta, 20 s) y redactar el resumen (25 s) |
 | `anthropic` | `anthropic` 2 (`AsyncAnthropic`, Messages API), clave `IA_ANTHROPIC_API_KEY`, modelo `IA_LLM_MODELO` (por defecto `claude-sonnet-5-5`) | Ídem. Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic |
+
+## Consume (MCP, host de los agentes · 501)
+
+El proceso `ia-worker` es el único cliente MCP. Token del cliente confidencial `ia-agentes` (*client credentials* contra `IA_KEYCLOAK_ISSUER/protocol/openid-connect/token`, rol de realm `agente_ia`; el secreto `IA_AGENTES_CLIENT_SECRET` solo lo lee `ia-worker`), reutilizado hasta 30 s antes de que venza. Encabezados `Authorization: Bearer …` y `X-Request-Id: <ejecucionId>`; 10 s por llamada; `tools/list` de cada servidor al iniciar cada ejecución de agente. Una herramienta que no está en este contrato, o con otro esquema de entrada, se ignora con una advertencia en el registro.
+
+| Servidor (variable) | Herramientas |
+|---|---|
+| Obras (`IA_OBRAS_MCP_URL`, por defecto `http://localhost:8081/mcp`) | `avance_obra {obraId?, periodo?}`, `buscar_diario {obraId, desde?, hasta?, texto?, limite?}`, `planillas_estado {obraId?, estados?, desdePeriodo?, limite?}` |
+| Materiales (`IA_MATERIALES_MCP_URL`, por defecto `http://localhost:8082/mcp`) | `stock_obra {obraId?, estados?, limite?}`, `consumos_partida {obraId, periodo, partidaId?}` |
+| Finanzas (`IA_FINANZAS_MCP_URL`, por defecto `http://localhost:8083/mcp`) | `cobros_por_vencer {dias?, incluirVencidos?, obraId?}` |
+| IA (`IA_PROPIO_MCP_URL`, por defecto `http://localhost:8085/mcp`; en Compose `http://ia-api:8085/mcp`) | `consultar_reporte`, `riesgo_retraso`, `consumos_atipicos` (las de arriba) |
+
+Esquemas y salidas de cada herramienta: `docs/specs/501-servidores-mcp/diseno.md` de la carpeta general.

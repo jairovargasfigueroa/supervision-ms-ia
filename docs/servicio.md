@@ -74,10 +74,18 @@ ML no supervisado: un Isolation Forest (scikit-learn, CPU) marca las `SALIDA` de
 - **Modelo**: `ml/atipicos/generar.py` (datos sintéticos) y `ml/atipicos/entrenar.py` (`--fuente sintetica` o `--fuente real` con ≥ 500 salidas), artefactos en `modelos/consumos_atipicos/<version>/` y `actual.txt` (o `IA_MODELO_ATIPICOS_VERSION`). El servicio solo carga archivos de su propio repositorio (`modelo.joblib` usa `pickle`). Reentrenar es manual.
 - **Recálculo del riesgo (402)**: después de confirmar la transacción, si la salida fue atípica, se llama al puerto `NotificadorRiesgo.consumo_atipico(obra_id, evento_id)`; su adaptador `RecalculoRiesgo402` (`atipicos/infraestructura/riesgo.py`) llama a `ServicioRiesgo.recalcular_obra(obra_id, motivo=CONSUMO_ATIPICO, clave={obraId}:{eventoId})`. Si falla, se registra y no se reintenta (la tarea diaria de la 402 lo corrige).
 
+## Servidores MCP (501)
+
+El servicio de IA es el **host** de los agentes (502) y también uno de los cuatro **servidores MCP** privados de la plataforma.
+
+- **Servidor** (`ia-api`, `POST /mcp`, HTTP «streamable» sin estado y respuestas JSON): tres herramientas de solo lectura para lo que solo IA sabe: `riesgo_retraso` (última predicción de la 402), `consumos_atipicos` (403) y `consultar_reporte` (el mismo `validar_receta` en modo `MCP` y `MotorReportes` de la 503, con el usuario `ia_reportes_lector`). Solo acepta el rol `agente_ia` (service account de `ia-agentes`); no pasa por el gateway.
+- **Cliente** (`ia-worker`): token de `ia-agentes` por *client credentials* (caché hasta 30 s antes de vencer), `tools/list` de los cuatro servidores (Obras, Materiales, Finanzas e IA) al iniciar cada ejecución de agente, 10 s por llamada y `X-Request-Id` = id de la ejecución. Lo que un servidor publica fuera del contrato (u otro esquema) se ignora con una advertencia.
+- Argumentos que no cumplen el esquema → `ARGUMENTO_INVALIDO` sin consultar la base; obra inexistente → `OBRA_NO_ENCONTRADA`; base o `ia_db` caídas → `ERROR_INTERNO` (resultados con `isError`, no errores del protocolo).
+
 ## Autenticación y visibilidad
 
 - Toda ruta salvo `/salud` exige un token de Keycloak válido (firma por JWKS, vencimiento, emisor `IA_KEYCLOAK_ISSUER`, audiencia `plataforma-api`): sin él, `401 NO_AUTENTICADO`. Si Keycloak no responde al pedir el JWKS: `503 SERVICIO_NO_DISPONIBLE`.
-- Roles efectivos según `azp` (convenciones, «Usuario con varios roles»). El servicio atiende solo al ERP: `admin`, `gerente` y `residente`; los demás reciben `403 SIN_PERMISO` en todo el servicio.
+- Roles efectivos según `azp` (convenciones, «Usuario con varios roles»). Las rutas REST atienden solo al ERP: `admin`, `gerente` y `residente`; los demás (también `agente_ia`) reciben `403 SIN_PERMISO`. `/mcp` acepta solo `agente_ia` (501).
 - Visibilidad: `admin` y `gerente` ven todas las obras; `residente`, las de `rpt_obra_resumen.residente_id = sub`.
 
 ## Qué no hace
