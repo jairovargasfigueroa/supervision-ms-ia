@@ -65,6 +65,12 @@ class RepositorioAtipicos(Protocol):
         """`PENDIENTE` de cada obra (las que no tienen, no vienen)."""
         ...
 
+    async def buscar(
+        self, obra_ids: Sequence[str] | None, estados: Sequence[str], desde: datetime, limite: int
+    ) -> tuple[list[ConsumoAtipico], int]:
+        """Solo lectura (501): `registrado_en >= desde`, del puntaje más alto al más bajo; y el total sin recortar."""
+        ...
+
     async def revisar(
         self, consumo_id: str, estado: str, revisado_por: str, revisado_en: datetime, comentario: str | None
     ) -> ConsumoAtipico | None:
@@ -76,6 +82,8 @@ class RepositorioAtipicos(Protocol):
 class ObraConocida:
     obra_id: str
     residente_id: str | None
+    nombre: str | None = None
+    """Nombre de `rpt_obra_resumen` (lo usa la herramienta MCP `consumos_atipicos`, 501)."""
 
 
 class ObrasReportes(Protocol):

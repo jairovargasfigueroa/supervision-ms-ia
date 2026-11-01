@@ -1,5 +1,6 @@
 """Lecturas de consumos atípicos para el gateway (403): lista por obra y pendientes por obra (tablero)."""
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,18 @@ from ia.atipicos.dominio.consumo import ConsumoAtipico
 from ia.atipicos.dominio.valores import ESTADOS_REVISION, MAXIMO_LISTA, MAXIMO_OBRAS_RESUMEN
 from ia.auth.usuario import Usuario
 from ia.auth.visibilidad import puede_ver_obra, ve_todas_las_obras
+
+
+@dataclass(frozen=True)
+class ConsumoConObra:
+    consumo: ConsumoAtipico
+    obra_nombre: str | None
+
+
+@dataclass(frozen=True)
+class ConsumosFiltrados:
+    consumos: list[ConsumoConObra]
+    total: int
 
 
 class ConsultarConsumosAtipicos:
@@ -49,6 +62,25 @@ class ConsultarConsumosAtipicos:
         inicio = datetime.combine(dia_desde, time(), self._zona) if dia_desde else None
         fin = datetime.combine(dia_hasta + timedelta(days=1), time(), self._zona) if dia_hasta else None
         return await self._repositorio.listar(obra_ids, estado, inicio, fin, MAXIMO_LISTA)
+
+    async def para_agentes(
+        self, obra_id: str | None, estados: list[str], dias: int, hoy: date, limite: int
+    ) -> ConsumosFiltrados:
+        """Herramienta MCP `consumos_atipicos` (501; `agente_ia` ve todas las obras). Solo lee.
+
+        `registrado_en` desde las 00:00 (La Paz) de `hoy − dias`; del puntaje más alto al más bajo.
+        `ObraNoEncontrada` si `obra_id` no está en la base de reportes.
+        """
+        if obra_id is not None and obra_id not in await self._obras.obras([obra_id]):
+            raise ObraNoEncontrada("Obra no encontrada")
+        desde = datetime.combine(hoy - timedelta(days=dias), time(), self._zona)
+        consumos, total = await self._repositorio.buscar(
+            None if obra_id is None else [obra_id], list(dict.fromkeys(estados)), desde, limite
+        )
+        obras = await self._obras.obras(sorted({c.obra_id for c in consumos}))
+        return ConsumosFiltrados(
+            [ConsumoConObra(c, obras[c.obra_id].nombre if c.obra_id in obras else None) for c in consumos], total
+        )
 
     async def resumen(self, usuario: Usuario, obra_ids: list[str]) -> list[tuple[str, int]]:
         """`PENDIENTE` de cada obra pedida y visible (0 si no tiene), en el orden pedido."""

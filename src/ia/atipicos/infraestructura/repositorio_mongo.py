@@ -73,6 +73,20 @@ class RepositorioAtipicosMongo:
         )
         return {str(fila["_id"]): int(fila["pendientes"]) async for fila in cursor}
 
+    async def buscar(
+        self, obra_ids: Sequence[str] | None, estados: Sequence[str], desde: datetime, limite: int
+    ) -> tuple[list[ConsumoAtipico], int]:
+        filtro: Documento = {"estado_revision": {"$in": list(estados)}, "registrado_en": {"$gte": desde}}
+        if obra_ids is not None:
+            filtro["obra_id"] = {"$in": list(obra_ids)}
+        total = await self._coleccion.count_documents(filtro, maxTimeMS=5000)
+        cursor = (
+            self._coleccion.find(filtro, max_time_ms=5000)
+            .sort([("puntaje", DESCENDING), ("registrado_en", DESCENDING), ("_id", DESCENDING)])
+            .limit(limite)
+        )
+        return [de_documento(documento) async for documento in cursor], total
+
     async def revisar(
         self, consumo_id: str, estado: str, revisado_por: str, revisado_en: datetime, comentario: str | None
     ) -> ConsumoAtipico | None:

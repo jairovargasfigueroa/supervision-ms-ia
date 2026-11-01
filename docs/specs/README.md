@@ -11,3 +11,4 @@ Una carpeta por funcionalidad: `NNN-nombre/` con su `tareas.md`. El número coin
 | 402 · Riesgo de retraso | Módulo `riesgo/`, `ml/riesgo/` (datos sintéticos y entrenamiento) y `modelos/riesgo_retraso/` |
 | 403 · Consumos atípicos | Módulo `atipicos/` |
 | 503 · Reportes por voz | Módulos `lenguaje/` (puerto `ModeloLenguaje`, Ollama y Anthropic) y `constructor_reportes/`; migración `0002` (lector) |
+| 501 · Servidores MCP | Módulo `mcp/`: servidor MCP de IA en `/mcp` (`consultar_reporte`, `riesgo_retraso`, `consumos_atipicos`) y cliente MCP del host |

@@ -54,6 +54,13 @@ class Configuracion(BaseSettings):
     # Secreto: solo en .env o en el gestor de secretos. Con `anthropic` y sin clave, el servicio no arranca.
     anthropic_api_key: SecretStr = SecretStr("")
 
+    # 501: hosts que acepta el servidor MCP de `ia-api` (el SDK responde 421 a otro `Host`), separados por coma.
+    mcp_hosts_permitidos: str = "localhost:8085,127.0.0.1:8085"
+
+    @property
+    def hosts_mcp(self) -> list[str]:
+        return [h.strip() for h in self.mcp_hosts_permitidos.split(",") if h.strip()]
+
     @property
     def modelo_llm(self) -> str:
         """`IA_LLM_MODELO` o el modelo por defecto del proveedor."""
@@ -84,3 +91,15 @@ class ConfiguracionCarga(Configuracion):
 
     reportes_client_id: str = "ia-reportes"
     reportes_client_secret: SecretStr = SecretStr("")
+
+
+class ConfiguracionWorker(Configuracion):
+    """Solo la lee `ia-worker` (host de los agentes, 501): incluye el cliente confidencial `ia-agentes`."""
+
+    agentes_client_id: str = "ia-agentes"
+    agentes_client_secret: SecretStr = SecretStr("")
+    # Servidores MCP de la plataforma (POST /mcp de cada servicio; IA también es servidor).
+    obras_mcp_url: str = "http://localhost:8081/mcp"
+    materiales_mcp_url: str = "http://localhost:8082/mcp"
+    finanzas_mcp_url: str = "http://localhost:8083/mcp"
+    propio_mcp_url: str = "http://localhost:8085/mcp"
