@@ -209,7 +209,7 @@ Cada ejecución de un agente (programada o «Ejecutar ahora»). La crea `ia-api`
 | pasos | arreglo embebido | `{ numero, servidor, herramienta, argumentos, resultado_resumen, en, duracion_ms, error }` (`servidor`: `obras`, `materiales`, `finanzas` o `ia`; `argumentos` como texto JSON; `resultado_resumen`: primeros 500 caracteres del resultado y el número de filas) |
 | hallazgos | arreglo embebido | `{ obra_id, obra_nombre, tipo, severidad, situacion, causa_probable, evidencia[{herramienta, dato}] }` (`obra_nombre` lo pone el código desde los resultados de las herramientas) |
 
-Índices: `ix_ejecucion_agente_agente_iniciada` (`agente`, `iniciada_en` desc), `ix_ejecucion_agente_estado` (`estado`), `ix_ejecucion_agente_hallazgos_obra` (`hallazgos.obra_id`).
+Índices: `ix_ejecucion_agente_agente_iniciada` (`agente`, `iniciada_en` desc), `ix_ejecucion_agente_estado` (`estado`), `ix_ejecucion_agente_hallazgos_obra` (`hallazgos.obra_id`). Además `ux_ejecucion_agente_en_curso`, único y parcial (`agente`) con `estado = EN_CURSO`: dos «Ejecutar ahora» a la vez no crean dos ejecuciones en curso del mismo agente (el segundo recibe `409 EJECUCION_EN_CURSO`). **(decisión técnica)**
 
 ### sugerencia (502)
 
