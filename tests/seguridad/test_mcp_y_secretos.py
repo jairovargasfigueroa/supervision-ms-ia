@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from agentes.apoyo_agentes import O1, entorno, reporte_seguimiento, servidores_de_prueba
 from apoyo import reportes_503 as d
 from apoyo.tokens import ADMIN_ID, GERENTE_ID, encabezado
+from dobles.anthropic_simulado import rechazo_como_la_api
 from ia import main, worker
 from ia.agentes.aplicacion.ejecutor import EjecutorAgente
 from ia.agentes.infraestructura.conector_mcp import ConectorMcpReal
@@ -139,6 +140,8 @@ def _anthropic() -> ModeloAnthropic:
 
     def manejar(pedido: httpx2.Request) -> httpx2.Response:
         assert pedido.headers["authorization"] == f"Bearer {CLAVE_ANTHROPIC}"
+        if (rechazo := rechazo_como_la_api(pedido)) is not None:  # como la Messages API real
+            return rechazo
         bloques, fin = respuestas.pop(0)
         cuerpo = {"id": "m", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5", "content": bloques}
         cuerpo |= {"stop_reason": fin, "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}}
