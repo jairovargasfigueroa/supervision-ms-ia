@@ -266,3 +266,35 @@ def test_valores_como_texto() -> None:
     assert valor_texto(date(2027, 3, 1)) == "2027-03-01"
     assert valor_texto(31) == "31"
     assert valor_texto(None) is None
+
+
+def test_solo_hasta_tambien_tiene_el_tope_de_24_meses() -> None:
+    """Sin `DESDE`, el rango empieza 24 meses antes de `HASTA` (no se consulta todo el historial)."""
+    planillas = validar_receta(
+        {"conjunto": "PLANILLAS", "filtros": [{"campo": "periodo", "operador": "HASTA", "valor": "2026-06"}]}, REST, HOY
+    )
+    assert planillas.filtros_de("periodo") == [
+        FiltroValidado("periodo", "HASTA", "2026-06"),
+        FiltroValidado("periodo", "DESDE", "2024-07"),
+    ]
+    movimientos = validar_receta(
+        {"conjunto": "MOVIMIENTOS", "filtros": [{"campo": "fecha", "operador": "HASTA", "valor": "2027-03-10"}]},
+        REST,
+        HOY,
+    )
+    assert movimientos.filtros_de("fecha") == [
+        FiltroValidado("fecha", "HASTA", date(2027, 3, 10)),
+        FiltroValidado("fecha", "DESDE", date(2025, 4, 1)),
+    ]
+    con_desde = validar_receta(
+        {
+            "conjunto": "PLANILLAS",
+            "filtros": [
+                {"campo": "periodo", "operador": "DESDE", "valor": "2026-01"},
+                {"campo": "periodo", "operador": "HASTA", "valor": "2026-06"},
+            ],
+        },
+        REST,
+        HOY,
+    )
+    assert len(con_desde.filtros_de("periodo")) == 2
