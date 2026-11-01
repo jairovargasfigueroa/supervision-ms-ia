@@ -93,7 +93,8 @@ def resultado_error(codigo: str, mensaje: str) -> CallToolResult:
 
 class ServidorMcp(MCPServer[Any]):
     def __init__(self, herramientas: Sequence[Herramienta]) -> None:
-        super().__init__("ia", version="0.1.0")
+        # Sin recursos ni *prompts* (las listas quedan vacías) y sin `subscriptions/listen`: solo herramientas.
+        super().__init__("ia", version="0.1.0", subscriptions=False)
         self._herramientas: dict[str, Herramienta] = {h.nombre: h for h in herramientas}
 
     @property

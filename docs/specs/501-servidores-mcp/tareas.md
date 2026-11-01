@@ -11,7 +11,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Servidor: `src/ia/mcp/servidor/servidor.py` (`MCPServer` montado en `/mcp` de `ia-api`, sin estado, respuestas JSON, `session_manager.run()` en el *lifespan*, hosts permitidos) y `seguridad.py` (solo `agente_ia`; las rutas REST siguen rechazándolo)
 - [x] Herramientas `riesgo_retraso` y `consumos_atipicos` (repositorios de la 402 y la 403, solo lectura, `truncado`, anotación de solo lectura)
 - [x] Herramienta `consultar_reporte` (receta modo `MCP`, límite 50, errores `ARGUMENTO_INVALIDO` con rutas y `ERROR_INTERNO`)
-- [ ] Pruebas del servidor: 401 / 403 / 200, `tools/list` exacto, cifras iguales al REST, argumentos maliciosos, solo lectura (ninguna tabla ni colección cambia)
+- [x] Pruebas del servidor: 401 / 403 / 200, `tools/list` exacto, cifras iguales al REST, argumentos maliciosos, solo lectura (ninguna tabla ni colección cambia)
 - [ ] Cliente: `src/ia/mcp/cliente/token.py` (*client credentials* con caché hasta 30 s antes del vencimiento; pruebas con un Keycloak simulado)
 - [ ] `src/ia/mcp/cliente/cliente.py`: `listar_herramientas()` y `llamar()` con `Authorization`, `X-Request-Id` y tiempo máximo de 10 s
 - [ ] `src/ia/mcp/cliente/catalogo.py`: mapa herramienta → servidor (cuatro servidores) y comparación de esquemas con `tools/list` (herramientas desconocidas se ignoran con advertencia)

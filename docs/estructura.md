@@ -156,6 +156,7 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - Solo `src/ia/mcp/` importa el SDK `mcp` (y `httpx2`). El servidor reutiliza los casos de uso de lectura de 402, 403 y 503; no escribe nada.
 - El servidor sobrescribe `list_tools` y `call_tool` de `MCPServer` (métodos públicos del SDK) para publicar esquemas estrictos de Pydantic (`additionalProperties: false`) y devolver `ARGUMENTO_INVALIDO` como resultado con `isError`: el registro por decorador del SDK ignora los campos de más y responde sus propios textos de error. **(decisión técnica)**
 - Se monta como ruta exacta `/mcp` de `ia-api` (no `app.mount`, que responde `307` a `POST /mcp` para agregar la barra final), detrás de `SeguridadMcp`; `ia.main.crear_app` entra en `session_manager.run()` en su *lifespan*. **(decisión técnica)**
+- `MCPServer` siempre anuncia las capacidades de recursos y *prompts* (registra sus manejadores); aquí sus listas quedan **vacías** (no se publica ninguno) y no se atiende `subscriptions/listen`. Solo `POST`: otro método responde `405` (el SDK abriría un flujo SSE con `GET`). **(decisión técnica)**
 - `/mcp` acepta solo `agente_ia` (excepción a «solo `admin`, `gerente` y `residente`», que sigue valiendo para todas las rutas REST).
 - Las pruebas del cliente usan un servidor MCP de prueba hecho con el mismo SDK, servido por ASGI (`httpx2.ASGITransport`), sin red.
 
