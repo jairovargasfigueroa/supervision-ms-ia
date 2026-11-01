@@ -31,6 +31,8 @@ class ErrorApi(Exception):
     titulo: str
     detalle: str | None = None
     errores: list[ErrorCampo] = field(default_factory=list)
+    encabezados: dict[str, str] = field(default_factory=dict)
+    """Encabezados de la respuesta (por ejemplo `Retry-After` con `429`)."""
 
     def __str__(self) -> str:
         return f"{self.estado} {self.codigo}: {self.detalle or self.titulo}"

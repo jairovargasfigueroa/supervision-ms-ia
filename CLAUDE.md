@@ -4,14 +4,15 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`) y 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra) y 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
 - Python 3.12 con `uv` (`pyproject.toml` + `uv.lock`) · paquete `src/ia`
 - FastAPI + Uvicorn (puerto `8085`, `IA_PUERTO`) · `pydantic` 2 + `pydantic-settings` (variables `IA_*`)
 - PostgreSQL `reportes_db` con SQLAlchemy 2 (Core, async) + `psycopg` 3; migraciones con Alembic (`migraciones/`)
-- MongoDB `ia_db` con `pymongo` (`AsyncMongoClient`; lo llenan 402 y 403)
+- MongoDB `ia_db` con `pymongo` (`AsyncMongoClient`; lo llenan 402, 403 y la capa 5)
+- Modelo de lenguaje (503): `ollama` 0.6 y `anthropic` 2 detrás del puerto `ModeloLenguaje`
 - RabbitMQ con `aio-pika` · token con `PyJWT` (`PyJWKClient`) · tareas programadas con `apscheduler` 3 · `httpx` (carga inicial)
 - Pruebas con `pytest` + `pytest-asyncio`; PostgreSQL real con Testcontainers · lint y formato con `ruff` · tipos con `mypy --strict`
 
@@ -32,7 +33,7 @@ Configuración local: copiar `.env.example` a `.env` y completar. **`.env` nunca
 ## Arquitectura: CQRS + DDD + hexagonal ligera por módulo
 
 - **CQRS solo para lo que cruza servicios:** cada servicio sigue escribiendo y leyendo lo suyo; aquí vive un modelo de lectura desnormalizado alimentado por **proyecciones** de eventos. Sin *event sourcing*: el modelo se puede rearmar con la carga inicial.
-- Un módulo por contexto (`reportes` en la 401; `riesgo` en la 402 y `atipicos` en la 403 como módulos hermanos), cada uno con `dominio/` (reglas puras: sin FastAPI, SQLAlchemy, aio-pika ni httpx), `aplicacion/` (casos de uso y puertos) e `infraestructura/` (SQL, eventos, REST, web).
+- Un módulo por contexto (`reportes` en la 401; `riesgo` en la 402, `atipicos` en la 403, `lenguaje` y `constructor_reportes` en la 503 como módulos hermanos), cada uno con `dominio/` (reglas puras: sin FastAPI, SQLAlchemy, aio-pika ni httpx), `aplicacion/` (casos de uso y puertos) e `infraestructura/` (SQL, eventos, REST, web).
 - Puertos solo para lo externo que cambia: la base (`BaseReportes`, `RepositorioReportes`) y los clientes REST de la carga inicial (`FuenteObras`, `FuenteMateriales`, `FuenteFinanzas`). La cola se abstrae en `mensajeria` (`CanalMensajeria`).
 - Las proyecciones son casos de uso compartidos por los dos adaptadores de entrada (consumidor de eventos y carga inicial): las reglas son las mismas por los dos caminos.
 
@@ -44,7 +45,8 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - Cada evento se aplica en **una transacción** que inserta `evento_aplicado` (inbox) y actualiza las `rpt_*`; cada escritura es idempotente por fila (`INSERT … ON CONFLICT`).
 - `PlanillaAprobada`, `PlanillaObservada` y la carga de cada obra bloquean antes la fila de la obra (`SELECT … FOR UPDATE`); el avance se recalcula desde `rpt_planilla`, nunca se suma.
 - El secreto de `ia-reportes` solo lo lee el comando de carga inicial (nunca `ia-api` ni `ia-worker`).
-- La capa 4 no usa modelos de lenguaje.
+- La capa 4 (`reportes`, `riesgo`, `atipicos`) no usa modelos de lenguaje. Desde la capa 5, el modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) se usa solo por el puerto `ModeloLenguaje` (`src/ia/lenguaje/`) y nunca escribe SQL: el constructor de reportes (503) valida su receta contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados, con el usuario de solo lectura `ia_reportes_lector`.
+- `IA_ANTHROPIC_API_KEY` es un secreto: solo en `.env` o en el gestor de secretos (vacía en `.env.example`).
 
 ## Documentación
 

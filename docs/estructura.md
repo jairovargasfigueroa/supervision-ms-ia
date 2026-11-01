@@ -4,7 +4,7 @@ Obligatorio para todo el código de este servicio. Si algo no encaja, propón el
 
 ## Librerías
 
-Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. ML (403): `scikit-learn` 1 (Isolation Forest, también en el servicio), `numpy` 2, `joblib` 1 (`modelo.joblib`) y `pyyaml` 6. No se agregan otras librerías para lo mismo.
+Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 2, `sqlalchemy` 2 (Core, async) + `psycopg` 3, `alembic` 1, `pymongo` 4 (`AsyncMongoClient`), `aio-pika` 10, `PyJWT[crypto]` 2 (`PyJWKClient`), `apscheduler` 3 (`AsyncIOScheduler`), `httpx` (carga inicial), `tzdata` (zonas horarias en Windows y en la imagen). Desarrollo: `pytest` 9, `pytest-asyncio` 1, `testcontainers[postgres]` 4, `ruff`, `mypy`. ML (402): `xgboost` 3, `scikit-learn` 1 (división por grupos y métricas, solo en `ml/`), `pandas` 3 (solo en `ml/`), `numpy` 2, `pyyaml` 6; grupo opcional `notebook` (`matplotlib`, `ipykernel`) para `ml/riesgo/exploracion.ipynb`. ML (403): `scikit-learn` 1 (Isolation Forest, también en el servicio), `numpy` 2, `joblib` 1 (`modelo.joblib`) y `pyyaml` 6. Modelo de lenguaje (503, lo reutiliza la 502): `ollama` 0.6 y `anthropic` 2, solo en `src/ia/lenguaje/infraestructura/`. No se agregan otras librerías para lo mismo.
 
 - SQLAlchemy se usa **sin ORM** (tablas de Core y `AsyncConnection`): las proyecciones son *upserts* (`INSERT … ON CONFLICT`) y bloqueos (`SELECT … FOR UPDATE`) explícitos.
 - Montos y porcentajes con `decimal.Decimal`, nunca `float`; redondeo «mitad hacia arriba» al final (`ia.reportes.dominio.indicadores.redondear`).
@@ -17,6 +17,7 @@ pyproject.toml · uv.lock · .python-version · .env.example · Dockerfile · al
 migraciones/                      Alembic de reportes_db (env.py usa IA_REPORTES_DB_URL)
   versions/0001_inicial.py        rpt_obra_resumen, rpt_planilla, rpt_consumo_material, rpt_movimiento, rpt_cobro,
                                   evento_aplicado, carga_inicial
+  versions/0002_lector_reportes.py GRANT SELECT de ia_reportes_lector sobre las 5 tablas rpt_* (503)
 src/ia/
   main.py                         crear_app() (FastAPI) y ejecutar() → ia-api (Uvicorn en IA_PUERTO)
   worker.py                       ejecutar() → ia-worker (consumidor + tareas programadas)
@@ -96,6 +97,34 @@ src/ia/
       eventos.py                  registrar_deteccion(): agrega el paso previo y el posterior del recálculo
       riesgo.py                   RecalculoRiesgo402: NotificadorRiesgo con ServicioRiesgo.recalcular_obra
       web.py                      APIRouter: GET /consumos-atipicos, GET /consumos-atipicos/resumen, PUT …/revision
+  lenguaje/                       (503; lo usa la 502) puerto del modelo de lenguaje
+    dominio/mensajes.py           Mensaje (SISTEMA, USUARIO, ASISTENTE, HERRAMIENTA), DefinicionHerramienta,
+                                  LlamadaHerramienta (id, nombre, argumentos), RespuestaModelo (texto, llamadas), Opciones
+    aplicacion/puerto.py          ModeloLenguaje (Protocol) y errores LlmNoDisponible, LlmTiempoAgotado, SalidaNoValida
+    infraestructura/ollama.py     ModeloOllama (cliente `ollama`, AsyncClient)
+    infraestructura/anthropic.py  ModeloAnthropic (SDK `anthropic`, AsyncAnthropic)
+    infraestructura/esquemas.py   adaptar_esquema(esquema, proveedor): JSON Schema que acepta cada proveedor
+    infraestructura/componer.py   crear_modelo_lenguaje(config) según IA_LLM_PROVEEDOR
+  constructor_reportes/           (503) catálogo → receta → validación → consulta parametrizada (REST y MCP)
+    dominio/catalogo.py           conjuntos: columnas, filtros, dimensiones, medidas, valores por defecto, ejemplos
+    dominio/receta.py             RecetaReporte (Pydantic, extra="forbid") y su JSON Schema
+    dominio/validacion.py         validar_receta(receta, conjunto, modo) → RecetaValidada o lista de errores
+    dominio/atajos.py             atajos: receta fija en función de «hoy»
+    dominio/resultado.py          Columna, Resultado (filas como texto), totales para el resumen, plantilla
+    aplicacion/puertos.py         EjecutorConsultas, CatalogoMateriales, RepositorioConsultas, LimitadorConsultas
+    aplicacion/motor.py           MotorReportes.ejecutar(receta_validada, modo, directorio) → Resultado (REST y MCP)
+    aplicacion/interpretar.py     InterpretarPedido: texto → RecetaReporte (LLM)
+    aplicacion/consultar.py       ConsultarReporte: caso de uso de las personas (límite, interpretar, motor, resumen, guardar)
+    infraestructura/expresiones.py     expresión de SQLAlchemy Core de cada columna, filtro, dimensión y medida (constantes)
+    infraestructura/constructor_sql.py arma el select() de Core desde la receta validada (sin texto del usuario ni del modelo)
+    infraestructura/ejecutor_sql.py    ejecuta con el usuario lector, READ ONLY y statement_timeout de 5 s
+    infraestructura/atipicos_mongo.py  consulta de ia_db.consumo_atipico (filtro y agregación armados con constantes)
+    infraestructura/materiales_rest.py GET /materiales de Materiales con el token del usuario (caché de 5 min)
+    infraestructura/consultas_mongo.py ia_db.consulta_reporte
+    infraestructura/limite_mongo.py    ia_db.limite_consulta
+    infraestructura/web.py             POST /consultas-reporte, GET /consultas-reporte, GET /catalogo-reportes
+  seguridad/                      (504; la usan 502 y 503) como_dato (delimitar.py), texto_seguro (limpiar.py),
+                                  reglas comunes del mensaje de sistema (reglas_sistema.py)
 ml/riesgo/                        (402) generar.py, entrenar.py, parametros.yaml, README.md (formato del CSV real),
                                   exploracion.ipynb; datos/ no se versiona
 modelos/riesgo_retraso/           actual.txt y rr-X.Y.Z/ (modelo.ubj, variables.json, metricas.json, parametros.yaml)
@@ -111,4 +140,10 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - Rutas: un `APIRouter` en `infraestructura/web.py`, incluido en `ia.main.crear_app`.
 - Eventos: el manejador de cada tipo lo registra `reportes` (`ia.reportes.infraestructura.eventos.registrar_manejadores`). Un módulo agrega pasos con `ConsumidorMensajes.agregar_previo(tipo, paso)` (corre **antes** de la transacción de PostgreSQL; idempotente por clave, por ejemplo MongoDB de la 403) y `agregar_posterior(tipo, paso)` (corre **después** de confirmarla y solo si el evento se aplicó, por ejemplo la predicción de la 402). Si un paso falla, el mensaje se reintenta como cualquier fallo.
 - Tareas programadas: agregar el trabajo en `ia.worker` (mismo `AsyncIOScheduler`, zona del negocio).
-- Índices de MongoDB: `ia.comun.mongo.registrar_indice(...)` en el módulo; el worker y la API los aseguran al arrancar.
+- Índices de MongoDB: `ia.comun.mongo.registrar_indice(...)` en el módulo (con TTL o filtro parcial si hace falta); el worker y la API los aseguran al arrancar.
+
+## Modelo de lenguaje (capa 5)
+
+- Solo `lenguaje/infraestructura/` importa `ollama` o `anthropic`; los casos de uso usan el puerto `ModeloLenguaje`. `reportes`, `riesgo` y `atipicos` (capa 4) no usan modelos de lenguaje.
+- La salida de `generar_json` siempre se vuelve a validar con Pydantic en el código que la pide.
+- Las pruebas nunca llaman a un modelo real: `ModeloSimulado` (`tests/dobles/`) y, para los adaptadores, un transporte HTTP simulado de `httpx`.

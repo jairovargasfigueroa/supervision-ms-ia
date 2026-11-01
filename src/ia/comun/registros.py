@@ -62,5 +62,14 @@ def configurar_registros(json_: bool, nivel: int = logging.INFO) -> None:
         registro = logging.getLogger(nombre)
         registro.handlers[:] = []
         registro.propagate = True
-    for ruidoso in ("aio_pika", "aiormq", "apscheduler", "httpx", "pymongo"):
+    silenciar_librerias()
+
+
+# Librerías que registran demasiado; `anthropic`, `ollama` y `mcp` además registran en DEBUG el cuerpo de las
+# peticiones (mensajes al modelo, encabezados): nunca deben llegar al registro (504).
+RUIDOSOS = ("aio_pika", "aiormq", "apscheduler", "httpx", "httpx2", "httpcore", "pymongo", "anthropic", "ollama", "mcp")
+
+
+def silenciar_librerias() -> None:
+    for ruidoso in RUIDOSOS:
         logging.getLogger(ruidoso).setLevel(logging.WARNING)

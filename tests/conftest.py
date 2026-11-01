@@ -13,6 +13,15 @@ os.environ["IA_REPORTES_DB_URL"] = "postgresql+psycopg://nadie:nadie@127.0.0.1:1
 os.environ["IA_MONGO_URL"] = "mongodb://127.0.0.1:1"
 os.environ["IA_MONGO_DB"] = "ia_pruebas"
 os.environ["IA_RABBITMQ_URL"] = "amqp://nadie:nadie@127.0.0.1:1/"
+os.environ["IA_REPORTES_DB_URL_LECTURA"] = "postgresql+psycopg://nadie:nadie@127.0.0.1:1/ninguna"
+os.environ["IA_MATERIALES_URL"] = "http://127.0.0.1:1"
+os.environ["IA_OBRAS_URL"] = "http://127.0.0.1:1"
+os.environ["IA_FINANZAS_URL"] = "http://127.0.0.1:1"
+# Nunca un modelo de lenguaje real (503, 502): Ollama a una dirección inexistente y sin clave de Anthropic.
+os.environ["IA_LLM_PROVEEDOR"] = "ollama"
+os.environ["IA_LLM_MODELO"] = ""
+os.environ["IA_OLLAMA_URL"] = "http://127.0.0.1:1"
+os.environ["IA_ANTHROPIC_API_KEY"] = ""
 
 
 def pytest_asyncio_loop_factories(

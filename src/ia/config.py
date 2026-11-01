@@ -5,6 +5,13 @@ from typing import Literal
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROVEEDORES_LLM = ("ollama", "anthropic")
+MODELO_LLM_POR_DEFECTO = {"ollama": "qwen3:8b", "anthropic": "claude-sonnet-5-5"}
+
+
+class ConfiguracionInvalida(Exception):
+    """La configuración no permite arrancar. El mensaje nunca incluye valores de las variables (504, K2)."""
+
 
 class Configuracion(BaseSettings):
     """Lo que usan `ia-api` e `ia-worker`. El secreto de `ia-reportes` no está aquí a propósito."""
@@ -33,6 +40,31 @@ class Configuracion(BaseSettings):
     obras_url: str = "http://localhost:8081"
     materiales_url: str = "http://localhost:8082"
     finanzas_url: str = "http://localhost:8083"
+
+    # 503: usuario de solo lectura de reportes_db para el constructor de reportes.
+    reportes_db_url_lectura: str = (
+        "postgresql+psycopg://ia_reportes_lector:ia_reportes_lector@localhost:5433/reportes_db"
+    )
+
+    # 503: modelo de lenguaje (lo reutiliza la 502). `ollama` u `anthropic`; otro valor: el servicio no arranca.
+    llm_proveedor: str = "ollama"
+    # Vacío: `qwen3:8b` con Ollama y `claude-sonnet-5-5` con Anthropic.
+    llm_modelo: str | None = None
+    ollama_url: str = "http://localhost:11434"
+    # Secreto: solo en .env o en el gestor de secretos. Con `anthropic` y sin clave, el servicio no arranca.
+    anthropic_api_key: SecretStr = SecretStr("")
+
+    @property
+    def modelo_llm(self) -> str:
+        """`IA_LLM_MODELO` o el modelo por defecto del proveedor."""
+        return self.llm_modelo or MODELO_LLM_POR_DEFECTO.get(self.llm_proveedor, "")
+
+    def comprobar_llm(self) -> None:
+        """Proveedor conocido y, con `anthropic`, la clave presente; si no, `ConfiguracionInvalida`."""
+        if self.llm_proveedor not in PROVEEDORES_LLM:
+            raise ConfiguracionInvalida("IA_LLM_PROVEEDOR debe ser «ollama» o «anthropic».")
+        if self.llm_proveedor == "anthropic" and not self.anthropic_api_key.get_secret_value().strip():
+            raise ConfiguracionInvalida("Con IA_LLM_PROVEEDOR=anthropic hace falta IA_ANTHROPIC_API_KEY.")
 
     @property
     def registros_json(self) -> bool:

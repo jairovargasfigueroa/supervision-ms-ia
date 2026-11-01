@@ -10,3 +10,4 @@ Una carpeta por funcionalidad: `NNN-nombre/` con su `tareas.md`. El número coin
 | 401 · Base de reportes | Proyecto, modelo de lectura `reportes_db` (proyecciones de 6 eventos), tareas programadas, carga inicial, `GET /reportes/estado` |
 | 402 · Riesgo de retraso | Módulo `riesgo/`, `ml/riesgo/` (datos sintéticos y entrenamiento) y `modelos/riesgo_retraso/` |
 | 403 · Consumos atípicos | Módulo `atipicos/` |
+| 503 · Reportes por voz | Módulos `lenguaje/` (puerto `ModeloLenguaje`, Ollama y Anthropic) y `constructor_reportes/`; migración `0002` (lector) |

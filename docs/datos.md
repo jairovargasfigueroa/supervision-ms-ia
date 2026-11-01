@@ -153,3 +153,41 @@ Una `SALIDA` que el Isolation Forest marcó como atípica. La escribe `ia-worker
 | comentario | string | null si no se escribió |
 
 El historial que usan las variables sale de `rpt_movimiento` (solo lectura: salidas con `registrado_en` anterior y otro `movimiento_id`).
+
+### consulta_reporte (503)
+
+Cada consulta de reporte de las personas (`POST /consultas-reporte`), también las no reconocidas. La escribe `ia-api`. No se guardan las filas (se pueden volver a pedir).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string (uuid) | |
+| usuario_id | string | `sub` del token; índice `ix_consulta_reporte_usuario_creada` (`usuario_id`, `creada_en` descendente) |
+| texto | string | lo que envió el usuario; nulo si fue un atajo |
+| atajo | string | código del atajo; nulo si fue texto |
+| conjunto | string | nulo si no se reconoció |
+| receta | objeto | receta aplicada (con valores por defecto); nula si no se reconoció |
+| resumen | string | redactado o de plantilla; nulo si hubo error |
+| resumen_plantilla | bool | |
+| resultado | string | `OK`, `NO_RECONOCIDA`, `RECETA_INVALIDA`, `ERROR` |
+| error_codigo | string | código del error si `ERROR` |
+| total_filas | int | |
+| proveedor_llm · modelo | string | `ollama` / `qwen3:8b`, `anthropic` / `claude-sonnet-5-5` |
+| duracion_ms | int | |
+| creada_en | date | |
+
+### limite_consulta (503)
+
+Límite de 10 consultas de reporte por minuto por usuario (ventana fija de un minuto, decisión del equipo).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string | `{usuarioId}:{AAAA-MM-DDTHH:MM}` (minuto en UTC) |
+| usuario_id | string | |
+| cuenta | int | |
+| expira_en | date | fin del minuto + 2 min; índice TTL `ttl_limite_consulta_expira` (`expireAfterSeconds: 0`) |
+
+Cada pedido hace `find_one_and_update(_id, {$inc: {cuenta: 1}, $setOnInsert: {…}}, upsert)`: atómico, sirve con varios procesos de `ia-api`. Con `cuenta > 10` → `429 DEMASIADAS_CONSULTAS` con `Retry-After`.
+
+## Usuario de solo lectura de `reportes_db` (503)
+
+Rol `ia_reportes_lector` (`LOGIN`, `default_transaction_read_only = on`; lo crea el script de inicio de PostgreSQL de `infra`, contraseña en `.env`) con `SELECT` **solo** en `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` (no en `evento_aplicado` ni `carga_inicial`). Los `GRANT` van en la migración `0002_lector_reportes` de este servicio (si el rol no existe, la migración falla: hay que crearlo antes). Lo usa el constructor de reportes (`IA_REPORTES_DB_URL_LECTURA`), con transacción `READ ONLY` y `statement_timeout` de 5 s.
