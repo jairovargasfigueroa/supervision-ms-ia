@@ -176,3 +176,22 @@ async def test_paso_con_servidor_caido_y_error_de_herramienta_guardan_solo_el_co
     for texto in (ejecucion.error.mensaje, *errores):
         for tecnico in ("Llm", "Fallo", "Error", "MCP", "Exception", "finanzas.prueba"):
             assert tecnico not in texto, texto
+
+
+async def test_salida_ilegible_del_reporte_tiene_un_reintento(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+    from ia.lenguaje.aplicacion.puerto import SalidaNoValida
+
+    hallazgo = {**reporte_seguimiento()["hallazgos"][0], "evidencia": [{"herramienta": "avance_obra", "dato": "x"}]}
+    bueno = reporte_seguimiento(hallazgos=[hallazgo])
+    modelo = ModeloSimulado(json_=[SalidaNoValida("JSON cortado"), bueno], conversacion=["Listo."])
+    async with entorno(ia_db, modelo) as e:
+        corregida = await e.correr("SEGUIMIENTO_OBRAS")
+    assert corregida.estado == TERMINADA, corregida.error
+    assert "JSON" in modelo.llamadas_de("generar_json")[1].mensajes[-1].contenido
+
+    dos_veces = ModeloSimulado(json_=[SalidaNoValida("x"), SalidaNoValida("y")], conversacion=["Listo."])
+    async with entorno(ia_db, dos_veces) as e:
+        fallida = await e.correr("CONTROL_COBROS")
+    assert fallida.estado == FALLIDA
+    assert fallida.error is not None
+    assert fallida.error.codigo == "REPORTE_INVALIDO"

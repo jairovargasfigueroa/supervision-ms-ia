@@ -46,7 +46,7 @@ from ia.agentes.dominio.ejecucion import (
 )
 from ia.agentes.dominio.reporte import ReporteInvalido, ReporteValidado, esquema_reporte, validar_reporte
 from ia.comun.tiempo import Reloj
-from ia.lenguaje.aplicacion.puerto import ErrorLlm, ModeloLenguaje, registrar_validacion
+from ia.lenguaje.aplicacion.puerto import ErrorLlm, ModeloLenguaje, SalidaNoValida, registrar_validacion
 from ia.lenguaje.dominio.mensajes import DefinicionHerramienta, Mensaje, Opciones, Rol
 from ia.mcp.cliente.catalogo import CONTRATO, aceptadas, servidor_de
 from ia.mcp.cliente.cliente import FalloMcp, HerramientaPublicada
@@ -348,7 +348,19 @@ class EjecutorAgente:
             ),
         ]
         for intento in (1, 2):
-            salida = await self._modelo.generar_json(conversacion, esquema, opciones)
+            try:
+                salida = await self._modelo.generar_json(conversacion, esquema, opciones)
+            except SalidaNoValida:
+                # JSON ilegible o cortado: también tiene el reintento (y, si se repite, REPORTE_INVALIDO).
+                registrar_validacion(contexto=estado.ejecucion.id, operacion="reporte_agente", valida=False)
+                registro.info("Reporte ilegible de %s (intento %d).", estado.ejecucion.id, intento)
+                conversacion.append(
+                    Mensaje.usuario(
+                        "Tu respuesta no fue un objeto JSON válido y completo. Vuelve a escribir el reporte completo "
+                        "con el formato pedido."
+                    )
+                )
+                continue
             try:
                 reporte = validar_reporte(salida, estado.agente, estado.obras, estado.con_exito)
             except ReporteInvalido as error:
