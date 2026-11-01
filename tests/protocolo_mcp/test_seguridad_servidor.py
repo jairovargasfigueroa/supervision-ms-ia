@@ -52,6 +52,17 @@ async def test_token_de_persona_responde_403(app: tuple[FastAPI, httpx.AsyncClie
         assert respuesta.json()["codigo"] == "SIN_PERMISO"
 
 
+async def test_agente_ia_de_otro_cliente_responde_403(app: tuple[FastAPI, httpx.AsyncClient]) -> None:
+    """El rol `agente_ia` solo vale con `azp = ia-agentes` (la service account de ese cliente)."""
+    aplicacion, _ = app
+    for azp in ("erp", "gateway", None):
+        respuesta = await _post_lista(
+            aplicacion, encabezado(["agente_ia"], sub="a0000000-0000-4000-8000-0000000000a1", azp=azp)
+        )
+        assert respuesta.status_code == 403, azp
+        assert respuesta.json()["codigo"] == "SIN_PERMISO"
+
+
 async def test_agente_ia_responde_200_sin_redireccion(app: tuple[FastAPI, httpx.AsyncClient]) -> None:
     aplicacion, _ = app
     respuesta = await _post_lista(aplicacion, encabezado_agente())
