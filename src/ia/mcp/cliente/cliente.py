@@ -143,7 +143,11 @@ class ClienteMcp:
             transport=self._transporte,
             event_hooks={"response": [al_responder]},
         )
-        async with Client(streamable_http_client(self.url, http_client=http), mode="auto", cache=None) as cliente:
+        # El SDK no cierra un cliente HTTP que se le pasa: se cierra aquí, al terminar la operación.
+        async with (
+            http,
+            Client(streamable_http_client(self.url, http_client=http), mode="auto", cache=None) as cliente,
+        ):
             yield cliente
 
 

@@ -120,3 +120,28 @@ async def test_herramienta_que_no_existe_es_fallo_del_protocolo(
 ) -> None:
     with pytest.raises(FalloMcp, match="protocolo"):
         await _cliente(servidor, keycloak).llamar("borrar_obra", {})
+
+
+async def test_cierra_su_cliente_http_en_cada_operacion(
+    servidor: ServidorPrueba, keycloak: KeycloakSimulado, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El SDK no cierra el `httpx2.AsyncClient` que se le pasa: lo cierra el `ClienteMcp` (también si falla)."""
+    import httpx2
+
+    import ia.mcp.cliente.cliente as modulo
+
+    creados: list[httpx2.AsyncClient] = []
+
+    class Registrado(httpx2.AsyncClient):
+        def __init__(self, *args: object, **opciones: object) -> None:
+            super().__init__(*args, **opciones)  # type: ignore[arg-type]
+            creados.append(self)
+
+    monkeypatch.setattr(modulo.httpx2, "AsyncClient", Registrado)
+    cliente = _cliente(servidor, keycloak)
+    await cliente.listar_herramientas()
+    await cliente.llamar("avance_obra", {})
+    with pytest.raises(FalloMcp):
+        await cliente.llamar("borrar_obra", {})
+    assert len(creados) == 3
+    assert all(c.is_closed for c in creados)
