@@ -13,6 +13,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Herramienta `consultar_reporte` (receta modo `MCP`, límite 50, errores `ARGUMENTO_INVALIDO` con rutas y `ERROR_INTERNO`)
 - [x] Pruebas del servidor: 401 / 403 / 200, `tools/list` exacto, cifras iguales al REST, argumentos maliciosos, solo lectura (ninguna tabla ni colección cambia)
 - [x] Cliente: `src/ia/mcp/cliente/token.py` (*client credentials* con caché hasta 30 s antes del vencimiento; pruebas con un Keycloak simulado)
-- [ ] `src/ia/mcp/cliente/cliente.py`: `listar_herramientas()` y `llamar()` con `Authorization`, `X-Request-Id` y tiempo máximo de 10 s
+- [x] `src/ia/mcp/cliente/cliente.py`: `listar_herramientas()` y `llamar()` con `Authorization`, `X-Request-Id` y tiempo máximo de 10 s
 - [ ] `src/ia/mcp/cliente/catalogo.py`: mapa herramienta → servidor (cuatro servidores) y comparación de esquemas con `tools/list` (herramientas desconocidas se ignoran con advertencia)
 - [ ] Pruebas del cliente contra un servidor MCP de prueba hecho con el mismo SDK (camino feliz, servidor caído, servidor lento, herramienta desconocida)

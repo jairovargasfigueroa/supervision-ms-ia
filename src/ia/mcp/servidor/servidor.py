@@ -187,7 +187,7 @@ def montar_mcp(app: FastAPI, servidor: ServidorMcp, hosts_permitidos: Sequence[s
 
 
 @asynccontextmanager
-async def servidor_en_marcha(servidor: ServidorMcp) -> AsyncIterator[None]:
+async def servidor_en_marcha(servidor: MCPServer[Any]) -> AsyncIterator[None]:
     """`session_manager.run()` en una tarea propia: su grupo de tareas (anyio) se abre y se cierra en la misma tarea
     aunque el *lifespan* de la app se recorra desde tareas distintas (por ejemplo, las fixtures de pytest)."""
     listo = asyncio.Event()
