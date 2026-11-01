@@ -4,7 +4,8 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import ProgrammingError
 
 import ia.mensajeria.inbox
 import ia.reportes.infraestructura.tablas  # noqa: F401  (registran sus tablas en la metadata)
@@ -48,6 +49,24 @@ def test_la_migracion_se_puede_revertir_y_volver_a_aplicar(url_migrada: str) -> 
             assert TABLAS_401.isdisjoint(inspect(conexion).get_table_names())
     finally:
         command.upgrade(config, "head")
+        motor.dispose()
+
+
+TABLAS_LECTOR = ("rpt_obra_resumen", "rpt_consumo_material", "rpt_movimiento", "rpt_cobro", "rpt_planilla")
+
+
+def test_el_lector_solo_lee_las_cinco_tablas_del_catalogo(url_lector: str) -> None:
+    motor = create_engine(url_lector)
+    try:
+        with motor.connect() as conexion:
+            for tabla in TABLAS_LECTOR:
+                conexion.execute(text(f"SELECT count(*) FROM {tabla}"))
+            conexion.rollback()
+            for prohibida in ("evento_aplicado", "carga_inicial"):
+                with pytest.raises(ProgrammingError, match="permission denied"):
+                    conexion.execute(text(f"SELECT count(*) FROM {prohibida}"))
+                conexion.rollback()
+    finally:
         motor.dispose()
 
 
