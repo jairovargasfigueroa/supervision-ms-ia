@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`) 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
@@ -46,7 +46,7 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - Cada evento se aplica en **una transacción** que inserta `evento_aplicado` (inbox) y actualiza las `rpt_*`; cada escritura es idempotente por fila (`INSERT … ON CONFLICT`).
 - `PlanillaAprobada`, `PlanillaObservada` y la carga de cada obra bloquean antes la fila de la obra (`SELECT … FOR UPDATE`); el avance se recalcula desde `rpt_planilla`, nunca se suma.
 - El secreto de `ia-reportes` solo lo lee el comando de carga inicial (nunca `ia-api` ni `ia-worker`).
-- El secreto de `ia-agentes` (`IA_AGENTES_CLIENT_SECRET`) solo lo lee `ia-worker` (`ConfiguracionWorker`). `/mcp` acepta solo `agente_ia`; las rutas REST nunca lo aceptan.
+- El secreto de `ia-agentes` (`IA_AGENTES_CLIENT_SECRET`) solo lo lee `ia-worker` (`ConfiguracionWorker`). `/mcp` acepta solo `agente_ia` en un token del cliente `ia-agentes` (`azp`); las rutas REST nunca lo aceptan.
 - La capa 4 (`reportes`, `riesgo`, `atipicos`) no usa modelos de lenguaje. Desde la capa 5, el modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) se usa solo por el puerto `ModeloLenguaje` (`src/ia/lenguaje/`) y nunca escribe SQL: el constructor de reportes (503) valida su receta contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados, con el usuario de solo lectura `ia_reportes_lector`.
 - `IA_ANTHROPIC_API_KEY` es un secreto: solo en `.env` o en el gestor de secretos (vacía en `.env.example`).
 
