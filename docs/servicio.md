@@ -99,6 +99,10 @@ Decisiones técnicas de la implementación:
 - El reporte final (`generar_json`) se pide **sin herramientas**: los pedidos del modelo y los resultados del bucle pasan a texto («Pedí la herramienta…», «Resultado de…:» seguido del dato delimitado por `como_dato`). La Messages API de Anthropic rechaza bloques `tool_use`/`tool_result` sin `tools`, y así el reporte funciona igual con los dos proveedores.
 - Si una obra salió en los datos sin nombre (por ejemplo, solo en `cobros_por_vencer`), `obra_nombre` es «Obra sin nombre en los datos».
 
+### Riesgo conocido: índices de `ia_db` al arrancar
+
+La idempotencia y la exclusión de varias escrituras dependen de índices únicos de MongoDB que `ia-api` e `ia-worker` crean al arrancar (`asegurar_indices_al_arrancar`): `ux_sugerencia_pendiente_obra_accion` (no repetir una sugerencia pendiente), `ux_ejecucion_agente_en_curso` (`409 EJECUCION_EN_CURSO` atómico) y los de la 402 y la 403. Si MongoDB no responde al arrancar, el proceso arranca igual y solo registra el error: hasta que se reinicie con MongoDB disponible, esos casos pueden duplicarse. No se corrige por ahora (decisión del 01/11/2026); si pasa, basta con reiniciar el proceso.
+
 ## Autenticación y visibilidad
 
 - Toda ruta salvo `/salud` exige un token de Keycloak válido (firma por JWKS, vencimiento, emisor `IA_KEYCLOAK_ISSUER`, audiencia `plataforma-api`): sin él, `401 NO_AUTENTICADO`. Si Keycloak no responde al pedir el JWKS: `503 SERVICIO_NO_DISPONIBLE`.
