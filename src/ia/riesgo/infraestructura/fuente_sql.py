@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from ia.comun.tiempo import ZONA_NEGOCIO
 from ia.reportes.dominio.valores import APROBADA, EN_EJECUCION, SALIDA
 from ia.reportes.infraestructura.tablas import rpt_movimiento, rpt_obra_resumen, rpt_planilla
-from ia.riesgo.aplicacion.puertos import ObraParaRiesgo
+from ia.riesgo.aplicacion.puertos import ObraParaRiesgo, ObraResumen
 from ia.riesgo.dominio.variables import EstadoObra, PlanillaAprobadaObra
 
 COLECCION_ATIPICOS = "consumo_atipico"
@@ -110,6 +110,29 @@ class VisibilidadObrasSql:
             consulta = consulta.where(o.residente_id == residente_id)
         async with self._motor.connect() as conexion:
             return {str(fila.obra_id) for fila in await conexion.execute(consulta)}
+
+
+class ObrasResumenSql:
+    """Nombre y estado de las obras de `rpt_obra_resumen` (solo lectura; herramienta MCP `riesgo_retraso`)."""
+
+    def __init__(self, motor: AsyncEngine) -> None:
+        self._motor = motor
+
+    async def existentes(self, obra_ids: list[str]) -> dict[str, ObraResumen]:
+        if not obra_ids:
+            return {}
+        return await self._leer(select(*_COLUMNAS_RESUMEN).where(rpt_obra_resumen.c.obra_id.in_(obra_ids)))
+
+    async def en_ejecucion(self) -> dict[str, ObraResumen]:
+        return await self._leer(select(*_COLUMNAS_RESUMEN).where(rpt_obra_resumen.c.estado == EN_EJECUCION))
+
+    async def _leer(self, consulta: Any) -> dict[str, ObraResumen]:
+        async with self._motor.connect() as conexion:
+            filas = (await conexion.execute(consulta)).all()
+        return {str(f.obra_id): ObraResumen(str(f.obra_id), str(f.nombre), str(f.estado)) for f in filas}
+
+
+_COLUMNAS_RESUMEN = (rpt_obra_resumen.c.obra_id, rpt_obra_resumen.c.nombre, rpt_obra_resumen.c.estado)
 
 
 class ContadorAtipicosMongo:

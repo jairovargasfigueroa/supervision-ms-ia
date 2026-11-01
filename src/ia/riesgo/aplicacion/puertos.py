@@ -101,3 +101,18 @@ class VisibilidadObras(Protocol):
     async def visibles(self, obra_ids: list[str], residente_id: str | None) -> set[str]:
         """Las obras de la lista que están en la base de reportes y, con `residente_id`, que son de ese residente."""
         ...
+
+
+@dataclass(frozen=True)
+class ObraResumen:
+    obra_id: str
+    nombre: str
+    estado: str
+
+
+class ObrasResumen(Protocol):
+    """Obras de `rpt_obra_resumen` (401) con su nombre: las lee la herramienta MCP `riesgo_retraso` (501)."""
+
+    async def existentes(self, obra_ids: list[str]) -> dict[str, ObraResumen]: ...
+
+    async def en_ejecucion(self) -> dict[str, ObraResumen]: ...

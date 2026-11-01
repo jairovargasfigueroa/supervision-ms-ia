@@ -22,6 +22,7 @@ from ia.constructor_reportes.infraestructura.materiales_rest import CatalogoMate
 from ia.constructor_reportes.infraestructura.web import router as rutas_constructor
 from ia.lenguaje.aplicacion.puerto import ModeloLenguaje
 from ia.lenguaje.infraestructura.componer import crear_modelo_lenguaje
+from ia.mcp.servidor.herramientas import herramientas_ia
 from ia.mcp.servidor.servidor import ServidorMcp, montar_mcp, servidor_en_marcha
 from ia.reportes.infraestructura.web import router as rutas_reportes
 from ia.riesgo.aplicacion.puertos import ModeloRiesgo
@@ -97,7 +98,7 @@ def crear_app(
     app.include_router(rutas_atipicos)
     app.include_router(rutas_constructor)
     # 501: servidor MCP de IA en POST /mcp (solo agente_ia).
-    servidor_mcp = ServidorMcp([])
+    servidor_mcp = ServidorMcp(herramientas_ia(app.state))
     app.state.servidor_mcp = servidor_mcp
     montar_mcp(app, servidor_mcp, config.hosts_mcp)
     return app

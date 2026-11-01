@@ -21,9 +21,13 @@ class ObrasReportesSql:
         if not validos:
             return {}
         async with self._motor.connect() as conexion:
-            filas = (await conexion.execute(select(_o.obra_id, _o.residente_id).where(_o.obra_id.in_(validos)))).all()
+            filas = (
+                await conexion.execute(select(_o.obra_id, _o.residente_id, _o.nombre).where(_o.obra_id.in_(validos)))
+            ).all()
         return {
-            str(f.obra_id): ObraConocida(str(f.obra_id), None if f.residente_id is None else str(f.residente_id))
+            str(f.obra_id): ObraConocida(
+                str(f.obra_id), None if f.residente_id is None else str(f.residente_id), str(f.nombre)
+            )
             for f in filas
         }
 
