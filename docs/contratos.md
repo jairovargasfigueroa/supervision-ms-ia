@@ -135,7 +135,7 @@ Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`)
 ### GET /agentes · 502
 Roles: admin, gerente, residente
 Devuelve: 200 [{ "agente", "nombre", "mision", "herramientas": [..], "ultimaEjecucion": EjecucionCorta | null, "sugerenciasPendientes": 2 }]
-Para residente no aparece CONTROL_COBROS y sugerenciasPendientes cuenta solo sus obras.
+Para residente no aparece CONTROL_COBROS, y sugerenciasPendientes y ultimaEjecucion.cantidadHallazgos cuentan solo sus obras.
 
 ### POST /agentes/{agente}/ejecuciones · 502
 Roles: admin, gerente · Sin cuerpo

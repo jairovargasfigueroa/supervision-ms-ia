@@ -99,7 +99,9 @@ async def test_recupera_las_en_curso_de_mas_de_10_minutos(repo: RepositorioEjecu
     recuperada = await repo.obtener(vieja.id)
     assert recuperada is not None
     assert recuperada.estado == FALLIDA
-    assert recuperada.error == ErrorEjecucion("INTERRUMPIDA", "La ejecución se interrumpió porque el servicio se reinició.")
+    assert recuperada.error == ErrorEjecucion(
+        "INTERRUMPIDA", "La ejecución se interrumpió porque el servicio se reinició."
+    )
     sigue = await repo.obtener(reciente.id)
     assert sigue is not None
     assert sigue.estado == EN_CURSO

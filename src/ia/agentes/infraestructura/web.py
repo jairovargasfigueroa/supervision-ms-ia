@@ -50,7 +50,8 @@ class EjecucionCortaRespuesta(_Camel):
     cantidad_hallazgos: int
 
     @classmethod
-    def desde(cls, e: Ejecucion) -> "EjecucionCortaRespuesta":
+    def desde(cls, e: Ejecucion, cantidad_hallazgos: int | None = None) -> "EjecucionCortaRespuesta":
+        """`cantidad_hallazgos`: los que ve el usuario (por defecto, todos)."""
         return cls(
             id=e.id,
             agente=e.agente,
@@ -58,7 +59,7 @@ class EjecucionCortaRespuesta(_Camel):
             estado=e.estado,
             iniciada_en=e.iniciada_en,
             terminada_en=e.terminada_en,
-            cantidad_hallazgos=len(e.hallazgos),
+            cantidad_hallazgos=len(e.hallazgos) if cantidad_hallazgos is None else cantidad_hallazgos,
         )
 
 
@@ -237,7 +238,9 @@ async def get_agentes(
             nombre=i.definicion.nombre,
             mision=i.definicion.mision,
             herramientas=list(i.definicion.herramientas),
-            ultima_ejecucion=None if i.ultima is None else EjecucionCortaRespuesta.desde(i.ultima),
+            ultima_ejecucion=None
+            if i.ultima is None
+            else EjecucionCortaRespuesta.desde(i.ultima, i.hallazgos_visibles),
             sugerencias_pendientes=i.pendientes,
         )
         for i in await caso.agentes(usuario)

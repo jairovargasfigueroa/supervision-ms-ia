@@ -103,6 +103,7 @@ async def test_agentes_para_gerente_y_residente(api: tuple[httpx.AsyncClient, Fa
     residente = (await http.get("/agentes", headers=RESIDENTE)).json()
     assert [a["agente"] for a in residente] == ["SEGUIMIENTO_OBRAS", "CONTROL_MATERIALES"]
     assert residente[0]["sugerenciasPendientes"] == 1  # solo sus obras
+    assert residente[0]["ultimaEjecucion"]["cantidadHallazgos"] == 1  # el hallazgo de O2 no es de su obra
 
 
 async def test_ejecutar_ahora(api: tuple[httpx.AsyncClient, FastAPI, dict[str, str]]) -> None:
