@@ -50,6 +50,15 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - La capa 4 (`reportes`, `riesgo`, `atipicos`) no usa modelos de lenguaje. Desde la capa 5, el modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) se usa solo por el puerto `ModeloLenguaje` (`src/ia/lenguaje/`) y nunca escribe SQL: el constructor de reportes (503) valida su receta contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados, con el usuario de solo lectura `ia_reportes_lector`.
 - `IA_ANTHROPIC_API_KEY` es un secreto: solo en `.env` o en el gestor de secretos (vacía en `.env.example`).
 
+### IA segura (capa 5, 504)
+
+- El modelo nunca escribe SQL ni filtros de base de datos ni ejecuta acciones: entrega una receta (503) o un reporte con sugerencias de una lista (502) que el código valida; el SQL lo arma el código con nombres del catálogo y valores enlazados.
+- Todo dato externo que llega al modelo (pregunta, resultados de herramientas, datos de reportes) pasa por `como_dato` (`src/ia/seguridad/delimitar.py`: delimitado y con `<` y `>` escapados); todo mensaje de sistema lleva `REGLAS_COMUNES` (`mensaje_sistema`); todo texto del modelo que se guarda o se muestra pasa por `texto_seguro`.
+- Toda salida del modelo se valida con esquema estricto (Pydantic, `extra="forbid"`) y listas permitidas antes de usarse, con cualquier proveedor.
+- En la capa 5 (`agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/`, `seguridad/`) solo `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` tocan SQL, y solo `atipicos_mongo.py` arma filtros de MongoDB para el catálogo (lo comprueba `tests/seguridad/test_arquitectura.py`).
+- No se registran tokens, encabezados `Authorization`, la clave del modelo, el secreto de `ia-agentes` ni el texto completo de los mensajes.
+- Las pruebas con entradas maliciosas (`tests/seguridad/`, catálogo S1–S18, G1–G14, M1–M6, K1–K2) corren con `uv run pytest` como las demás y deben pasar completas.
+
 ## Documentación
 
 - `docs/estructura.md`: **librerías permitidas y estructura de carpetas y archivos. Obligatorio leerlo antes de escribir código.**

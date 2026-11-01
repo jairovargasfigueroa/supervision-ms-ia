@@ -4,7 +4,7 @@ Requisitos y diseño: `docs/specs/504-seguridad-ia/` de `supervision-docs` (carp
 
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
-- [ ] Aplicar «Cambios a contratos y datos» del diseño en los documentos de este proyecto (`CLAUDE.md` y `docs/estructura.md`: reglas de IA segura)
+- [x] Aplicar «Cambios a contratos y datos» del diseño en los documentos de este proyecto (`CLAUDE.md` y `docs/estructura.md`: reglas de IA segura)
 - [ ] Módulo `src/ia/seguridad/` (`delimitar.py`, `limpiar.py`, `reglas_sistema.py`) y uso obligatorio en 502 y 503
 - [ ] Registro de cada llamada al modelo (en el puerto `ModeloLenguaje`) sin tokens, clave de la API ni secretos
 - [ ] Prueba de arquitectura: en el código de la capa 5, SQL solo en `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` (sin `text()` armado, *f-strings* ni concatenación) y filtros de MongoDB del catálogo solo en `atipicos_mongo.py`
