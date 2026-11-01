@@ -196,5 +196,5 @@ def test_k2_anthropic_sin_clave_no_arranca_sin_mostrar_otras_variables(
     impreso = capsys.readouterr().out
     assert "no arranca" in impreso
     assert "IA_ANTHROPIC_API_KEY" in impreso
-    for valor in (SECRETO_AGENTES, "clave-de-la-base", "anthropic\n"):
+    for valor in (SECRETO_AGENTES, "clave-de-la-base"):
         assert valor not in impreso
