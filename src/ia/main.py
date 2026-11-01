@@ -22,6 +22,7 @@ from ia.constructor_reportes.infraestructura.materiales_rest import CatalogoMate
 from ia.constructor_reportes.infraestructura.web import router as rutas_constructor
 from ia.lenguaje.aplicacion.puerto import ModeloLenguaje
 from ia.lenguaje.infraestructura.componer import crear_modelo_lenguaje
+from ia.mcp.servidor.servidor import ServidorMcp, montar_mcp, servidor_en_marcha
 from ia.reportes.infraestructura.web import router as rutas_reportes
 from ia.riesgo.aplicacion.puertos import ModeloRiesgo
 from ia.riesgo.infraestructura.modelo_xgboost import cargar_modelo
@@ -55,7 +56,9 @@ def crear_app(
         app.state.ia_db = app.state.mongo[config.mongo_db]
         await asegurar_indices_al_arrancar(app.state.ia_db)
         try:
-            yield
+            # 501: el servidor MCP (sin estado) necesita su administrador de sesiones en marcha.
+            async with servidor_en_marcha(servidor_mcp):
+                yield
         finally:
             await app.state.mongo.close()
             if propio:
@@ -93,6 +96,10 @@ def crear_app(
     app.include_router(rutas_riesgo)
     app.include_router(rutas_atipicos)
     app.include_router(rutas_constructor)
+    # 501: servidor MCP de IA en POST /mcp (solo agente_ia).
+    servidor_mcp = ServidorMcp([])
+    app.state.servidor_mcp = servidor_mcp
+    montar_mcp(app, servidor_mcp, config.hosts_mcp)
     return app
 
 
