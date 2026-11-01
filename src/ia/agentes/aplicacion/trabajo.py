@@ -5,7 +5,9 @@ recuperación al iniciar.
   Ollama la VM tiene un solo modelo cargado; con Anthropic se mantiene igual).
 - Diaria: encola los tres agentes en orden (`PROGRAMADA`); no repite un agente que ya tiene una ejecución programada
   con `iniciada_en` de hoy (La Paz).
-- Al iniciar: las `EN_CURSO` con más de 10 minutos pasan a `FALLIDA` con `INTERRUMPIDA`.
+- Al iniciar: las `EN_CURSO` con más de 10 minutos, y toda `EN_CURSO` ya tomada (el único worker que podía tenerla es
+  el que arranca), pasan a `FALLIDA` con `INTERRUMPIDA`. En marcha, una vez por minuto, también las tomadas hace más
+  de 10 minutos (una ejecución dura 3 como máximo: si sigue `EN_CURSO`, no se pudo guardar su final).
 """
 
 import logging
@@ -21,6 +23,7 @@ from ia.comun.tiempo import ZONA_NEGOCIO, Reloj
 registro = logging.getLogger("ia.agentes")
 
 INTERRUMPIDA_DESPUES = timedelta(minutes=10)
+REVISION_COLGADAS = timedelta(minutes=1)
 
 
 class TrabajoAgentes:
@@ -39,16 +42,31 @@ class TrabajoAgentes:
         self._proveedor = proveedor_llm
         self._modelo = modelo
         self._zona = ZoneInfo(zona)
+        self._ultima_revision: datetime | None = None
 
     async def recuperar(self) -> int:
+        """Al iniciar el worker."""
         ahora = self._reloj.ahora()
-        cantidad = await self._ejecuciones.recuperar_interrumpidas(ahora - INTERRUMPIDA_DESPUES, ahora)
+        cantidad = await self._ejecuciones.recuperar_interrumpidas(
+            ahora, iniciadas_antes_de=ahora - INTERRUMPIDA_DESPUES, tomadas_antes_de=ahora
+        )
         if cantidad:
             registro.warning("%s ejecuciones de agentes quedaron interrumpidas al reiniciar.", cantidad)
         return cantidad
 
+    async def recuperar_colgadas(self) -> int:
+        """Con el worker en marcha: las tomadas hace más de 10 minutos."""
+        ahora = self._reloj.ahora()
+        self._ultima_revision = ahora
+        cantidad = await self._ejecuciones.recuperar_interrumpidas(ahora, tomadas_antes_de=ahora - INTERRUMPIDA_DESPUES)
+        if cantidad:
+            registro.warning("%s ejecuciones de agentes quedaron colgadas y se marcaron interrumpidas.", cantidad)
+        return cantidad
+
     async def procesar_siguiente(self) -> bool:
         """Toma y ejecuta la siguiente ejecución en espera. `False` si no había ninguna."""
+        if self._ultima_revision is None or self._reloj.ahora() - self._ultima_revision >= REVISION_COLGADAS:
+            await self.recuperar_colgadas()
         ejecucion = await self._ejecuciones.tomar_siguiente(self._reloj.ahora())
         if ejecucion is None:
             return False

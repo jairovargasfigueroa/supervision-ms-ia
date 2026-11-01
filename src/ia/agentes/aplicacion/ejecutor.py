@@ -22,7 +22,7 @@ import logging
 import time
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
@@ -34,6 +34,7 @@ from ia.agentes.dominio.ejecucion import (
     ARGUMENTO_INVALIDO,
     EJECUCION_TIEMPO_AGOTADO,
     HERRAMIENTA_NO_PERMITIDA,
+    INTERRUMPIDA,
     LIMITE_ALCANZADO,
     LLM_NO_DISPONIBLE,
     REPORTE_INVALIDO,
@@ -46,7 +47,7 @@ from ia.agentes.dominio.ejecucion import (
 )
 from ia.agentes.dominio.reporte import ReporteInvalido, ReporteValidado, esquema_reporte, validar_reporte
 from ia.comun.tiempo import Reloj
-from ia.lenguaje.aplicacion.puerto import ErrorLlm, ModeloLenguaje, registrar_validacion
+from ia.lenguaje.aplicacion.puerto import ErrorLlm, ModeloLenguaje, SalidaNoValida, registrar_validacion
 from ia.lenguaje.dominio.mensajes import DefinicionHerramienta, Mensaje, Opciones, Rol
 from ia.mcp.cliente.catalogo import CONTRATO, aceptadas, servidor_de
 from ia.mcp.cliente.cliente import FalloMcp, HerramientaPublicada
@@ -58,6 +59,8 @@ registro = logging.getLogger("ia.agentes")
 ETIQUETA_DATOS = "datos_herramienta"
 RESULTADO_MAXIMO = 4000
 RESUMEN_PASO_MAXIMO = 500
+MARGEN_S = 0.25
+"""Lo que se deja libre antes de los 3 minutos para guardar el resultado."""
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,8 @@ class _Estado:
     obras: dict[str, str | None] = field(default_factory=dict)
     con_exito: set[str] = field(default_factory=set)
     caidos: list[str] = field(default_factory=list)
+    inicio: float = field(default_factory=time.monotonic)
+    """Cuándo empezó la ejecución (reloj monotónico): de aquí salen los 150 s del bucle y los 3 minutos."""
 
 
 class EjecutorAgente:
@@ -102,7 +107,14 @@ class EjecutorAgente:
     async def ejecutar(self, ejecucion: Ejecucion) -> None:
         try:
             async with asyncio.timeout(self._limites.total_s):
-                await self._ejecutar(ejecucion)
+                await self._ejecutar(ejecucion, time.monotonic())
+        except asyncio.CancelledError:
+            # Se apaga el worker: la ejecución no queda EN_CURSO para siempre (409 y diaria omitida).
+            registro.warning("La ejecución %s del agente %s se canceló.", ejecucion.id, ejecucion.agente)
+            await asyncio.shield(
+                self._fallar(ejecucion, INTERRUMPIDA, "La ejecución se interrumpió porque el servicio se detuvo.")
+            )
+            raise
         except TimeoutError:
             registro.warning("La ejecución %s del agente %s pasó el tiempo máximo.", ejecucion.id, ejecucion.agente)
             await self._fallar(ejecucion, EJECUCION_TIEMPO_AGOTADO, "La ejecución pasó el tiempo máximo (3 minutos).")
@@ -113,9 +125,9 @@ class EjecutorAgente:
     async def _fallar(self, ejecucion: Ejecucion, codigo: str, mensaje: str) -> None:
         await self._ejecuciones.fallar(ejecucion.id, ErrorEjecucion(codigo, mensaje), self._reloj.ahora())
 
-    async def _ejecutar(self, ejecucion: Ejecucion) -> None:
+    async def _ejecutar(self, ejecucion: Ejecucion, inicio: float) -> None:
         agente = AGENTES[ejecucion.agente]
-        estado = _Estado(ejecucion, agente, self._conector.sesion(ejecucion.id))
+        estado = _Estado(ejecucion, agente, self._conector.sesion(ejecucion.id), inicio=inicio)
 
         await self._descubrir(estado)
         if not estado.disponibles:
@@ -138,9 +150,9 @@ class EjecutorAgente:
         try:
             reporte = await self._reporte(estado, mensajes, opciones)
         except ErrorLlm as error:
-            await self._fallar(
-                ejecucion, LLM_NO_DISPONIBLE, f"El modelo de lenguaje no respondió ({type(error).__name__})."
-            )
+            # El tipo de error va solo al registro; el mensaje guardado es para personas (docs/mensajes.md).
+            registro.warning("El modelo no respondió al pedir el reporte de %s: %s", ejecucion.id, type(error).__name__)
+            await self._fallar(ejecucion, LLM_NO_DISPONIBLE, "El modelo de lenguaje no respondió.")
             return
         if reporte is None:
             await self._fallar(ejecucion, REPORTE_INVALIDO, "El modelo no logró un reporte válido en dos intentos.")
@@ -179,9 +191,8 @@ class EjecutorAgente:
                 publicadas = await estado.sesion.listar(servidor)
             except FalloMcp as error:
                 estado.caidos.append(servidor)
-                await self._paso(
-                    estado, servidor, "tools/list", {}, "", en, inicio, f"{SERVIDOR_NO_DISPONIBLE}: {error}"
-                )
+                registro.warning("tools/list de %s falló en %s: %s", servidor, estado.ejecucion.id, error)
+                await self._paso(estado, servidor, "tools/list", {}, "", en, inicio, SERVIDOR_NO_DISPONIBLE)
                 continue
             for herramienta in aceptadas(servidor, publicadas):
                 if herramienta.nombre in estado.agente.herramientas:
@@ -208,13 +219,14 @@ class EjecutorAgente:
             resultado = await estado.sesion.llamar(servidor, nombre, argumentos)
         except FalloMcp as error:
             estado.caidos.append(servidor)
-            await self._paso(estado, servidor, nombre, argumentos, "", en, inicio, f"{SERVIDOR_NO_DISPONIBLE}: {error}")
+            registro.warning("%s de %s falló en %s: %s", nombre, servidor, estado.ejecucion.id, error)
+            await self._paso(estado, servidor, nombre, argumentos, "", en, inicio, SERVIDOR_NO_DISPONIBLE)
             return self._error_para_modelo(nombre, SERVIDOR_NO_DISPONIBLE, "El servidor no respondió."), True
 
         texto = json.dumps(resultado.datos, ensure_ascii=False, default=str)
         if resultado.es_error:
             await self._paso(
-                estado, servidor, nombre, argumentos, texto, en, inicio, resultado.codigo or "ERROR_HERRAMIENTA"
+                estado, servidor, nombre, argumentos, texto, en, inicio, resultado.codigo or "ERROR_INTERNO"
             )
         else:
             estado.con_exito.add(nombre)
@@ -302,6 +314,15 @@ class EjecutorAgente:
         )
         return "\n\n".join(partes)
 
+    @staticmethod
+    def _restante(estado: _Estado, hasta_s: float) -> float:
+        return hasta_s - (time.monotonic() - estado.inicio)
+
+    @staticmethod
+    def _recortar(opciones: Opciones, restante: float) -> Opciones:
+        """El tiempo máximo de la llamada al modelo, recortado a lo que queda (al menos un instante)."""
+        return replace(opciones, tiempo_maximo_s=max(0.01, min(opciones.tiempo_maximo_s, restante)))
+
     async def _bucle(
         self,
         estado: _Estado,
@@ -309,13 +330,14 @@ class EjecutorAgente:
         definiciones: list[DefinicionHerramienta],
         opciones: Opciones,
     ) -> None:
-        inicio = time.monotonic()
         limites = self._limites
         for _ in range(limites.vueltas):
-            if estado.llamadas >= limites.llamadas or time.monotonic() - inicio >= limites.bucle_s:
+            restante = self._restante(estado, limites.bucle_s)
+            if estado.llamadas >= limites.llamadas or restante <= 0:
                 return
             try:
-                respuesta = await self._modelo.conversar(mensajes, definiciones, opciones)
+                # Cada vuelta tiene a lo sumo lo que queda del bucle: así el reporte siempre tiene su tiempo.
+                respuesta = await self._modelo.conversar(mensajes, definiciones, self._recortar(opciones, restante))
             except ErrorLlm as error:
                 registro.warning(
                     "El modelo no respondió en el bucle de %s: %s", estado.ejecucion.id, type(error).__name__
@@ -325,7 +347,7 @@ class EjecutorAgente:
             if not respuesta.llamadas:
                 return
             for llamada in respuesta.llamadas:
-                if estado.llamadas >= limites.llamadas or time.monotonic() - inicio >= limites.bucle_s:
+                if estado.llamadas >= limites.llamadas or self._restante(estado, limites.bucle_s) <= 0:
                     contenido = self._error_para_modelo(
                         llamada.nombre, LIMITE_ALCANZADO, "Se alcanzó el límite de llamadas o de tiempo."
                     )
@@ -337,8 +359,10 @@ class EjecutorAgente:
 
     async def _reporte(self, estado: _Estado, mensajes: list[Mensaje], opciones: Opciones) -> ReporteValidado | None:
         esquema = esquema_reporte(estado.agente)
+        # El reporte se pide sin herramientas: los pedidos y resultados del bucle pasan a texto (la Messages API
+        # rechaza bloques tool_use/tool_result sin `tools`). Los resultados siguen delimitados por `como_dato`.
         conversacion = [
-            *mensajes,
+            *_sin_herramientas(mensajes),
             Mensaje.usuario(
                 "Escribe el reporte final. Cada obraId debe ser una obra que salió en los datos de las herramientas; "
                 "cada evidencia cita una herramienta que llamaste con éxito y el dato; cada sugerencia usa una acción "
@@ -346,7 +370,20 @@ class EjecutorAgente:
             ),
         ]
         for intento in (1, 2):
-            salida = await self._modelo.generar_json(conversacion, esquema, opciones)
+            try:
+                restante = self._restante(estado, self._limites.total_s) - MARGEN_S
+                salida = await self._modelo.generar_json(conversacion, esquema, self._recortar(opciones, restante))
+            except SalidaNoValida:
+                # JSON ilegible o cortado: también tiene el reintento (y, si se repite, REPORTE_INVALIDO).
+                registrar_validacion(contexto=estado.ejecucion.id, operacion="reporte_agente", valida=False)
+                registro.info("Reporte ilegible de %s (intento %d).", estado.ejecucion.id, intento)
+                conversacion.append(
+                    Mensaje.usuario(
+                        "Tu respuesta no fue un objeto JSON válido y completo. Vuelve a escribir el reporte completo "
+                        "con el formato pedido."
+                    )
+                )
+                continue
             try:
                 reporte = validar_reporte(salida, estado.agente, estado.obras, estado.con_exito)
             except ReporteInvalido as error:
@@ -365,6 +402,27 @@ class EjecutorAgente:
             registrar_validacion(contexto=estado.ejecucion.id, operacion="reporte_agente", valida=True)
             return reporte
         return None
+
+
+def _sin_herramientas(mensajes: list[Mensaje]) -> list[Mensaje]:
+    """La conversación con los pedidos de herramientas y sus resultados como texto (sin bloques de herramientas ni los
+    bloques crudos del proveedor). El contenido de cada resultado ya viene delimitado y escapado (`como_dato`)."""
+    salida: list[Mensaje] = []
+    for m in mensajes:
+        if m.rol is Rol.ASISTENTE and m.llamadas:
+            pedidos = [
+                f"Pedí la herramienta {c.nombre[:60]} con "
+                + json.dumps(c.argumentos, ensure_ascii=False, default=str)[:500]
+                for c in m.llamadas
+            ]
+            salida.append(Mensaje(Rol.ASISTENTE, "\n".join([m.contenido, *pedidos]).strip()))
+        elif m.rol is Rol.HERRAMIENTA:
+            nombre = (m.nombre_herramienta or "herramienta")[:60]
+            error = " (error)" if m.es_error else ""
+            salida.append(Mensaje.usuario(f"Resultado de {nombre}{error}:\n{m.contenido}"))
+        else:
+            salida.append(m)
+    return salida
 
 
 def _recoger_obras(datos: Any, obras: dict[str, str | None]) -> None:

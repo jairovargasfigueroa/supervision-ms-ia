@@ -86,7 +86,7 @@ El servicio de IA es el **host** de los agentes (502) y también uno de los cuat
 
 Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`, en `agentes/dominio/definiciones.py`) que `ia-worker` ejecuta a las 06:00 de La Paz (`IA_AGENTES_CRON`, se apaga con `IA_AGENTES_PROGRAMADOS_ACTIVOS=false`) y a pedido (`POST /agentes/{agente}/ejecuciones` en `ia-api`). El servicio es el **host**: modelo de lenguaje (puerto `ModeloLenguaje`, 503) + cliente MCP (501).
 
-- **Cola:** la propia colección `ejecucion_agente`; `ia-worker` revisa cada 2 s y toma la `EN_CURSO` más antigua sin `tomada_en` (`find_one_and_update`), una a la vez. Al iniciar, las `EN_CURSO` de más de 10 minutos pasan a `FALLIDA` (`INTERRUMPIDA`). La diaria no repite un agente con una ejecución `PROGRAMADA` de hoy.
+- **Cola:** la propia colección `ejecucion_agente`; `ia-worker` revisa cada 2 s y toma la `EN_CURSO` más antigua sin `tomada_en` (`find_one_and_update`), una a la vez. Al iniciar, las `EN_CURSO` de más de 10 minutos y toda `EN_CURSO` ya tomada (el único worker que podía tenerla es el que arranca) pasan a `FALLIDA` (`INTERRUMPIDA`); en marcha, una vez por minuto, también las tomadas hace más de 10 minutos (una ejecución dura 3 como máximo), y una ejecución cancelada al apagar el worker se marca `INTERRUMPIDA` en el momento. Así no queda un `409 EJECUCION_EN_CURSO` permanente ni se omite la diaria. La diaria no repite un agente con una ejecución `PROGRAMADA` de hoy.
 - **Ejecución:** `tools/list` de los servidores del agente (lo que no está en el contrato se ignora); pasos iniciales; bucle con `conversar` (máximo 6 vueltas, 8 llamadas, 150 s); reporte con `generar_json` validado (un reintento); sugerencias `PENDIENTE` sin duplicar; todo en 3 minutos. Cada paso se guarda al momento (`$push`).
 - **Mínimo privilegio:** el modelo solo ve las herramientas del agente y, en `consultar_reporte`, sus conjuntos; otra herramienta → paso `HERRAMIENTA_NO_PERMITIDA`; argumentos fuera del esquema del contrato (o un conjunto ajeno) → `ARGUMENTO_INVALIDO` sin llamar al servidor.
 - **Decisión humana:** aprobar solo registra la decisión (no llama a otros servicios ni publica eventos); rechazar exige motivo de 10 a 500 caracteres.
@@ -94,9 +94,14 @@ Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`,
 Decisiones técnicas de la implementación:
 
 - El límite de 8 llamadas cuenta **cada pedido** de herramienta (también los rechazados por no permitidos o por argumentos): así un modelo que insiste en pedir lo prohibido no alarga la ejecución. Los pedidos que pasan el límite no se ejecutan ni se guardan como paso; vuelven al modelo con `LIMITE_ALCANZADO` (Anthropic exige una respuesta por cada `tool_use`).
-- Un servidor que no responde a `tools/list` queda como paso con `herramienta = "tools/list"` y error `SERVIDOR_NO_DISPONIBLE: …` (no cuenta para el límite); el resumen termina con «(Sin respuesta de: …)».
-- Códigos de `FALLIDA` además de los del diseño: `LLM_NO_DISPONIBLE` (el modelo no respondió al pedir el reporte) y `ERROR_INTERNO` (error inesperado).
+- Un servidor que no responde a `tools/list` queda como paso con `herramienta = "tools/list"` y error `SERVIDOR_NO_DISPONIBLE` (no cuenta para el límite; el detalle va al registro); el resumen termina con «(Sin respuesta de: …)».
+- Códigos de `FALLIDA` además de los del diseño: `LLM_NO_DISPONIBLE` (el modelo no respondió al pedir el reporte) y `ERROR_INTERNO` (error inesperado). El `error.mensaje` de la ejecución y el `error` de cada paso son solo para personas o un código del catálogo (`docs/mensajes.md`): nunca nombres de excepciones, servidores ni URL; ese detalle va al registro. Un `isError` sin código guarda `ERROR_INTERNO`.
+- El reporte final (`generar_json`) se pide **sin herramientas**: los pedidos del modelo y los resultados del bucle pasan a texto («Pedí la herramienta…», «Resultado de…:» seguido del dato delimitado por `como_dato`). La Messages API de Anthropic rechaza bloques `tool_use`/`tool_result` sin `tools`, y así el reporte funciona igual con los dos proveedores.
 - Si una obra salió en los datos sin nombre (por ejemplo, solo en `cobros_por_vencer`), `obra_nombre` es «Obra sin nombre en los datos».
+
+### Riesgo conocido: índices de `ia_db` al arrancar
+
+La idempotencia y la exclusión de varias escrituras dependen de índices únicos de MongoDB que `ia-api` e `ia-worker` crean al arrancar (`asegurar_indices_al_arrancar`): `ux_sugerencia_pendiente_obra_accion` (no repetir una sugerencia pendiente), `ux_ejecucion_agente_en_curso` (`409 EJECUCION_EN_CURSO` atómico) y los de la 402 y la 403. Si MongoDB no responde al arrancar, el proceso arranca igual y solo registra el error: hasta que se reinicie con MongoDB disponible, esos casos pueden duplicarse. No se corrige por ahora (decisión del 01/11/2026); si pasa, basta con reiniciar el proceso.
 
 ## Autenticación y visibilidad
 

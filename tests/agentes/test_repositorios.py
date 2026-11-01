@@ -149,7 +149,7 @@ async def test_recuperar_interrumpidas_y_programada_del_dia(base: AsyncDatabase[
     vieja, reciente = ejecucion("CONTROL_COBROS", -15, PROGRAMADA), ejecucion("CONTROL_MATERIALES", -5)
     await repo.crear(vieja)
     await repo.crear(reciente)
-    assert await repo.recuperar_interrumpidas(AHORA - timedelta(minutes=10), AHORA) == 1
+    assert await repo.recuperar_interrumpidas(AHORA, iniciadas_antes_de=AHORA - timedelta(minutes=10)) == 1
     recuperada = await repo.obtener(vieja.id)
     assert recuperada is not None
     assert (recuperada.estado, recuperada.error and recuperada.error.codigo) == (FALLIDA, "INTERRUMPIDA")
@@ -177,3 +177,18 @@ async def test_sugerencia_pendiente_no_se_duplica_y_se_decide_una_vez(base: Asyn
     assert len(todas) == 3
     assert [s.estado for s in await repo.listar(APROBADA, ["SEGUIMIENTO_OBRAS"], [OBRA], 50)] == [APROBADA]
     assert await repo.listar(None, ["CONTROL_COBROS"], None, 50) == []
+
+
+async def test_recuperar_las_tomadas(base: AsyncDatabase[dict[str, Any]]) -> None:
+    """Una ejecución tomada que quedó EN_CURSO (worker cancelado o MongoDB caído al guardar) también se recupera."""
+    repo = RepositorioEjecucionesMongo(base)
+    tomada, en_espera = ejecucion("CONTROL_COBROS", -1), ejecucion("CONTROL_MATERIALES", -1)
+    await repo.crear(tomada)
+    await repo.crear(en_espera)
+    await base["ejecucion_agente"].update_one({"_id": tomada.id}, {"$set": {"tomada_en": AHORA - timedelta(minutes=1)}})
+    assert await repo.recuperar_interrumpidas(AHORA, tomadas_antes_de=AHORA - timedelta(minutes=10)) == 0
+    assert await repo.recuperar_interrumpidas(AHORA, tomadas_antes_de=AHORA) == 1
+    recuperada, sigue = await repo.obtener(tomada.id), await repo.obtener(en_espera.id)
+    assert recuperada is not None
+    assert sigue is not None
+    assert (recuperada.estado, sigue.estado) == (FALLIDA, EN_CURSO)

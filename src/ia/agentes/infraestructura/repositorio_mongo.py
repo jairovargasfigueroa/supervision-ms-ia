@@ -56,6 +56,7 @@ registrar_indice(
 )
 
 Documento = dict[str, Any]
+MENSAJE_INTERRUMPIDA = "La ejecución se interrumpió porque el servicio se reinició."
 
 
 class RepositorioEjecucionesMongo:
@@ -107,15 +108,28 @@ class RepositorioEjecucionesMongo:
             },
         )
 
-    async def recuperar_interrumpidas(self, iniciadas_antes_de: datetime, ahora: datetime) -> int:
+    async def recuperar_interrumpidas(
+        self,
+        ahora: datetime,
+        *,
+        iniciadas_antes_de: datetime | None = None,
+        tomadas_antes_de: datetime | None = None,
+    ) -> int:
+        condiciones: list[Documento] = []
+        if iniciadas_antes_de is not None:
+            condiciones.append({"iniciada_en": {"$lt": iniciadas_antes_de}})
+        if tomadas_antes_de is not None:
+            condiciones.append({"tomada_en": {"$ne": None, "$lt": tomadas_antes_de}})
+        if not condiciones:
+            return 0
         resultado = await self._coleccion.update_many(
-            {"estado": EN_CURSO, "iniciada_en": {"$lt": iniciadas_antes_de}},
+            {"estado": EN_CURSO, "$or": condiciones},
             {
                 "$set": {
                     "estado": FALLIDA,
                     "error": {
                         "codigo": INTERRUMPIDA,
-                        "mensaje": "La ejecución quedó en curso al reiniciar el servicio.",
+                        "mensaje": MENSAJE_INTERRUMPIDA,
                     },
                     "terminada_en": ahora,
                 }

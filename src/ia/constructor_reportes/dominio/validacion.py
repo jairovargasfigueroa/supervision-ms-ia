@@ -210,7 +210,7 @@ class _Validador:
                 metricas = tuple(MetricaValidada(f, campo) for f, campo in self.c.metricas_defecto)
         elif not columnas:
             columnas = self.c.columnas_defecto
-        filtros = filtros + self._filtros_defecto(filtros)
+        filtros = filtros + self._filtros_defecto(filtros) + _desde_implicito(filtros)
 
         salida = agrupar + tuple(m.clave for m in metricas) if agrupar else columnas
         orden = self._orden(r, salida)
@@ -431,6 +431,19 @@ class _Validador:
         if self.c.conjunto == "MOVIMIENTOS" and not campos & {"periodo", "fecha"}:
             return (FiltroValidado("periodo", "DESDE", _periodo(_sumar_meses(self.hoy.replace(day=1), -2))),)
         return ()
+
+
+def _desde_implicito(filtros: tuple[FiltroValidado, ...]) -> tuple[FiltroValidado, ...]:
+    """Con `HASTA` y sin `DESDE`, el rango empieza `MESES_MAXIMOS` meses antes (incluido el de `HASTA`): el tope de
+    24 meses vale también sin `DESDE`, así nunca se consulta todo el historial."""
+    implicitos = []
+    for f in filtros:
+        if f.operador != "HASTA" or any(o.campo == f.campo and o.operador == "DESDE" for o in filtros):
+            continue
+        inicio = _sumar_meses(_como_fecha(f.valor).replace(day=1), -(MESES_MAXIMOS - 1))
+        valor: ValorFiltro = inicio if isinstance(f.valor, date) else _periodo(inicio)
+        implicitos.append(FiltroValidado(f.campo, "DESDE", valor))
+    return tuple(implicitos)
 
 
 def _periodo(dia: date) -> str:

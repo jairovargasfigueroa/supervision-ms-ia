@@ -135,7 +135,7 @@ Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`)
 ### GET /agentes · 502
 Roles: admin, gerente, residente
 Devuelve: 200 [{ "agente", "nombre", "mision", "herramientas": [..], "ultimaEjecucion": EjecucionCorta | null, "sugerenciasPendientes": 2 }]
-Para residente no aparece CONTROL_COBROS y sugerenciasPendientes cuenta solo sus obras.
+Para residente no aparece CONTROL_COBROS, y sugerenciasPendientes y ultimaEjecucion.cantidadHallazgos cuentan solo sus obras.
 
 ### POST /agentes/{agente}/ejecuciones · 502
 Roles: admin, gerente · Sin cuerpo
@@ -179,7 +179,7 @@ Errores: 404 SUGERENCIA_NO_ENCONTRADA · 409 SUGERENCIA_YA_DECIDIDA · 422 MOTIV
 Ruta: POST /mcp (MCP, HTTP «streamable», sin estado, respuestas JSON; versión común 2025-11-25) · Rol: agente_ia (service account de ia-agentes) · Solo lo llama el servicio de IA
 ```
 
-- `/mcp` sin token o con un token inválido → `401 NO_AUTENTICADO`; token válido sin `agente_ia` → `403 SIN_PERMISO` (Problem Details). `GET /mcp` → `405` (sin flujo SSE).
+- `/mcp` sin token o con un token inválido → `401 NO_AUTENTICADO`; token válido sin `agente_ia`, o con `agente_ia` pero de otro cliente (`azp` distinto de `ia-agentes`) → `403 SIN_PERMISO` (Problem Details). `GET /mcp` → `405` (sin flujo SSE).
 - `tools/list` devuelve exactamente las tres herramientas, cada una con descripción, `inputSchema` y `outputSchema` (`additionalProperties: false`) y `annotations: { readOnlyHint: true, openWorldHint: false }`. Sin *resources* ni *prompts*.
 - `structuredContent` cumple el `outputSchema`; el mismo JSON va como texto en `content`.
 - Errores de herramienta (resultado con `isError: true` y texto JSON `{"codigo", "mensaje"}`): `ARGUMENTO_INVALIDO` (no cumple el esquema; no consulta la base), `OBRA_NO_ENCONTRADA`, `ERROR_INTERNO`. Una herramienta que no existe es un error del protocolo.

@@ -54,6 +54,8 @@ class InfoAgente:
     definicion: DefinicionAgente
     ultima: Ejecucion | None
     pendientes: int
+    hallazgos_visibles: int
+    """Hallazgos de la última ejecución en las obras que ve el usuario (el residente, solo los de sus obras)."""
 
 
 @dataclass(frozen=True)
@@ -82,14 +84,13 @@ class CasosAgentes:
     async def agentes(self, usuario: Usuario) -> list[InfoAgente]:
         alcance = await alcance_de(usuario, self._obras)
         obra_ids = None if alcance.obra_ids is None else sorted(alcance.obra_ids)
-        return [
-            InfoAgente(
-                AGENTES[agente],
-                await self._ejecuciones.ultima(agente),
-                await self._sugerencias.contar_pendientes(agente, obra_ids),
-            )
-            for agente in alcance.agentes
-        ]
+        informacion = []
+        for agente in alcance.agentes:
+            ultima = await self._ejecuciones.ultima(agente)
+            visibles = 0 if ultima is None else sum(1 for h in ultima.hallazgos if alcance.ve_obra(h.obra_id))
+            pendientes = await self._sugerencias.contar_pendientes(agente, obra_ids)
+            informacion.append(InfoAgente(AGENTES[agente], ultima, pendientes, visibles))
+        return informacion
 
     async def ejecutar_ahora(self, usuario: Usuario, agente: str) -> Ejecucion:
         """`AgenteInvalido` o `EjecucionEnCurso`; si no, la ejecución `MANUAL` `EN_CURSO` (la toma `ia-worker`)."""

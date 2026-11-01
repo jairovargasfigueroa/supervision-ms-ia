@@ -66,9 +66,16 @@ async def test_camino_feliz_seguimiento_de_obras(ia_db: AsyncDatabase[dict[str, 
     assert "Hoy es 2027-04-20" in sistema
     assert "2027-04" in sistema
     assert "SOLICITAR_INFORME_RESIDENTE" in sistema
-    diario = next(m for m in modelo.llamadas_de("generar_json")[0].mensajes if m.rol is Rol.HERRAMIENTA)
+    # En el bucle, el resultado vuelve como bloque de herramienta, delimitado.
+    en_el_bucle = next(m for m in modelo.llamadas_de("conversar")[1].mensajes if m.rol is Rol.HERRAMIENTA)
+    assert en_el_bucle.contenido.startswith('<datos_herramienta nombre="buscar_diario">')
+    # Para el reporte (sin herramientas) los pedidos y resultados pasan a texto, con los datos igual de delimitados.
+    reporte = modelo.llamadas_de("generar_json")[0].mensajes
+    assert all(not m.llamadas and m.rol is not Rol.HERRAMIENTA for m in reporte)
+    diario = next(m for m in reporte if m.contenido.startswith("Resultado de buscar_diario:"))
     assert TEXTO_DIARIO in diario.contenido
-    assert diario.contenido.startswith('<datos_herramienta nombre="buscar_diario">')
+    assert '\n<datos_herramienta nombre="buscar_diario">' in diario.contenido
+    assert any("Pedí la herramienta buscar_diario con" in m.contenido for m in reporte if m.rol is Rol.ASISTENTE)
     assert modelo.llamadas_de("generar_json")[0].opciones.contexto == ejecucion.id
 
 
@@ -141,6 +148,7 @@ async def test_llm_caido_es_fallida(ia_db: AsyncDatabase[dict[str, Any]]) -> Non
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
     assert ejecucion.error.codigo == "LLM_NO_DISPONIBLE"
+    assert ejecucion.error.mensaje == "El modelo de lenguaje no respondió."  # sin nombres técnicos (mensajes.md)
 
 
 async def test_limite_de_tiempo_total(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
@@ -150,3 +158,55 @@ async def test_limite_de_tiempo_total(ia_db: AsyncDatabase[dict[str, Any]]) -> N
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
     assert ejecucion.error.codigo == "EJECUCION_TIEMPO_AGOTADO"
+
+
+async def test_paso_con_servidor_caido_y_error_de_herramienta_guardan_solo_el_codigo(
+    ia_db: AsyncDatabase[dict[str, Any]],
+) -> None:
+    from agentes.apoyo_agentes import servidores_de_prueba
+
+    servidores = servidores_de_prueba()
+    servidores["finanzas"].caido = True
+    modelo = ModeloSimulado(json_=[LlmNoDisponible("caído")], conversacion=["Listo."])
+    async with entorno(ia_db, modelo, servidores=servidores) as e:
+        ejecucion = await e.correr("CONTROL_COBROS")
+    errores = [p.error for p in ejecucion.pasos if p.error]
+    assert errores == ["SERVIDOR_NO_DISPONIBLE"]
+    assert ejecucion.error is not None
+    for texto in (ejecucion.error.mensaje, *errores):
+        for tecnico in ("Llm", "Fallo", "Error", "MCP", "Exception", "finanzas.prueba"):
+            assert tecnico not in texto, texto
+
+
+async def test_salida_ilegible_del_reporte_tiene_un_reintento(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+    from ia.lenguaje.aplicacion.puerto import SalidaNoValida
+
+    hallazgo = {**reporte_seguimiento()["hallazgos"][0], "evidencia": [{"herramienta": "avance_obra", "dato": "x"}]}
+    bueno = reporte_seguimiento(hallazgos=[hallazgo])
+    modelo = ModeloSimulado(json_=[SalidaNoValida("JSON cortado"), bueno], conversacion=["Listo."])
+    async with entorno(ia_db, modelo) as e:
+        corregida = await e.correr("SEGUIMIENTO_OBRAS")
+    assert corregida.estado == TERMINADA, corregida.error
+    assert "JSON" in modelo.llamadas_de("generar_json")[1].mensajes[-1].contenido
+
+    dos_veces = ModeloSimulado(json_=[SalidaNoValida("x"), SalidaNoValida("y")], conversacion=["Listo."])
+    async with entorno(ia_db, dos_veces) as e:
+        fallida = await e.correr("CONTROL_COBROS")
+    assert fallida.estado == FALLIDA
+    assert fallida.error is not None
+    assert fallida.error.codigo == "REPORTE_INVALIDO"
+
+
+async def test_cada_llamada_al_modelo_se_recorta_al_tiempo_que_queda(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+    """Criterio 5: al llegar al límite de tiempo del bucle se cierra el reporte con lo que hay, sin pasar el total."""
+    modelo = ModeloSimulado(
+        json_=[reporte_cobros()],
+        conversacion=[[llamada("planillas_estado")], [llamada("planillas_estado")], "Listo."],
+        demora_s=1.2,
+    )
+    async with entorno(ia_db, modelo, Limites(total_s=3.0, bucle_s=1.5)) as e:
+        ejecucion = await e.correr("CONTROL_COBROS")
+    assert ejecucion.estado == TERMINADA, ejecucion.error
+    tiempos = [x.opciones.tiempo_maximo_s for x in modelo.llamadas]
+    assert tiempos[1] < 0.5  # la segunda vuelta solo tuvo lo que quedaba del bucle
+    assert tiempos[2] <= 1.8  # el reporte, lo que quedaba del total
