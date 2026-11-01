@@ -13,3 +13,4 @@ Una carpeta por funcionalidad: `NNN-nombre/` con su `tareas.md`. El número coin
 | 503 · Reportes por voz | Módulos `lenguaje/` (puerto `ModeloLenguaje`, Ollama y Anthropic) y `constructor_reportes/`; migración `0002` (lector) |
 | 501 · Servidores MCP | Módulo `mcp/`: servidor MCP de IA en `/mcp` (`consultar_reporte`, `riesgo_retraso`, `consumos_atipicos`) y cliente MCP del host |
 | 502 · Agentes en el ERP | Módulo `agentes/`: tres agentes (host MCP), `ejecucion_agente` y `sugerencia` en `ia_db`, endpoints de agentes y sugerencias |
+| 504 · Seguridad de la IA | Módulo `seguridad/` en 502 y 503, registro de las llamadas al modelo, prueba de arquitectura y `tests/seguridad/` (pruebas con entradas maliciosas) |
