@@ -104,8 +104,7 @@ async def test_limite_de_8_llamadas(ia_db: AsyncDatabase[dict[str, Any]]) -> Non
 
 async def test_resultado_con_is_error_queda_como_paso_y_vuelve_al_modelo(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
     servidores = servidores_de_prueba()
-    diario = next(h for h in servidores["obras"]._mcp._herramientas.values() if h.nombre == "buscar_diario")
-    diario.error = ("OBRA_NO_ENCONTRADA", "La obra no existe.")
+    servidores["obras"].herramienta("buscar_diario").error = ("OBRA_NO_ENCONTRADA", "La obra no existe.")
     hallazgo = {**reporte_seguimiento()["hallazgos"][0], "evidencia": [{"herramienta": "avance_obra", "dato": "x"}]}
     modelo = ModeloSimulado(
         json_=[reporte_seguimiento(hallazgos=[hallazgo])],

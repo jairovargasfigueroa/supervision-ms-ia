@@ -9,6 +9,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Registro de cada llamada al modelo (en el puerto `ModeloLenguaje`) sin tokens, clave de la API ni secretos
 - [x] Prueba de arquitectura: en el código de la capa 5, SQL solo en `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` (sin `text()` armado, *f-strings* ni concatenación) y filtros de MongoDB del catálogo solo en `atipicos_mongo.py`
 - [x] Pruebas S1 a S18 (reportes)
-- [ ] Pruebas G1 a G14 (agentes)
+- [x] Pruebas G1 a G14 (agentes)
 - [ ] Pruebas M1 a M6 del servidor MCP de IA y K1 y K2 (secretos)
 - [ ] Prueba manual con 10 entradas maliciosas contra el modelo real, con cada proveedor (Ollama y Anthropic), con resultados en el README
