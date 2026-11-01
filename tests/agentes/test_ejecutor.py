@@ -195,3 +195,18 @@ async def test_salida_ilegible_del_reporte_tiene_un_reintento(ia_db: AsyncDataba
     assert fallida.estado == FALLIDA
     assert fallida.error is not None
     assert fallida.error.codigo == "REPORTE_INVALIDO"
+
+
+async def test_cada_llamada_al_modelo_se_recorta_al_tiempo_que_queda(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+    """Criterio 5: al llegar al límite de tiempo del bucle se cierra el reporte con lo que hay, sin pasar el total."""
+    modelo = ModeloSimulado(
+        json_=[reporte_cobros()],
+        conversacion=[[llamada("planillas_estado")], [llamada("planillas_estado")], "Listo."],
+        demora_s=1.2,
+    )
+    async with entorno(ia_db, modelo, Limites(total_s=3.0, bucle_s=1.5)) as e:
+        ejecucion = await e.correr("CONTROL_COBROS")
+    assert ejecucion.estado == TERMINADA, ejecucion.error
+    tiempos = [x.opciones.tiempo_maximo_s for x in modelo.llamadas]
+    assert tiempos[1] < 0.5  # la segunda vuelta solo tuvo lo que quedaba del bucle
+    assert tiempos[2] <= 1.8  # el reporte, lo que quedaba del total

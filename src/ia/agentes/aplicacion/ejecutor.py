@@ -22,7 +22,7 @@ import logging
 import time
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
@@ -58,6 +58,8 @@ registro = logging.getLogger("ia.agentes")
 ETIQUETA_DATOS = "datos_herramienta"
 RESULTADO_MAXIMO = 4000
 RESUMEN_PASO_MAXIMO = 500
+MARGEN_S = 0.25
+"""Lo que se deja libre antes de los 3 minutos para guardar el resultado."""
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,8 @@ class _Estado:
     obras: dict[str, str | None] = field(default_factory=dict)
     con_exito: set[str] = field(default_factory=set)
     caidos: list[str] = field(default_factory=list)
+    inicio: float = field(default_factory=time.monotonic)
+    """Cuándo empezó la ejecución (reloj monotónico): de aquí salen los 150 s del bucle y los 3 minutos."""
 
 
 class EjecutorAgente:
@@ -102,7 +106,7 @@ class EjecutorAgente:
     async def ejecutar(self, ejecucion: Ejecucion) -> None:
         try:
             async with asyncio.timeout(self._limites.total_s):
-                await self._ejecutar(ejecucion)
+                await self._ejecutar(ejecucion, time.monotonic())
         except TimeoutError:
             registro.warning("La ejecución %s del agente %s pasó el tiempo máximo.", ejecucion.id, ejecucion.agente)
             await self._fallar(ejecucion, EJECUCION_TIEMPO_AGOTADO, "La ejecución pasó el tiempo máximo (3 minutos).")
@@ -113,9 +117,9 @@ class EjecutorAgente:
     async def _fallar(self, ejecucion: Ejecucion, codigo: str, mensaje: str) -> None:
         await self._ejecuciones.fallar(ejecucion.id, ErrorEjecucion(codigo, mensaje), self._reloj.ahora())
 
-    async def _ejecutar(self, ejecucion: Ejecucion) -> None:
+    async def _ejecutar(self, ejecucion: Ejecucion, inicio: float) -> None:
         agente = AGENTES[ejecucion.agente]
-        estado = _Estado(ejecucion, agente, self._conector.sesion(ejecucion.id))
+        estado = _Estado(ejecucion, agente, self._conector.sesion(ejecucion.id), inicio=inicio)
 
         await self._descubrir(estado)
         if not estado.disponibles:
@@ -302,6 +306,15 @@ class EjecutorAgente:
         )
         return "\n\n".join(partes)
 
+    @staticmethod
+    def _restante(estado: _Estado, hasta_s: float) -> float:
+        return hasta_s - (time.monotonic() - estado.inicio)
+
+    @staticmethod
+    def _recortar(opciones: Opciones, restante: float) -> Opciones:
+        """El tiempo máximo de la llamada al modelo, recortado a lo que queda (al menos un instante)."""
+        return replace(opciones, tiempo_maximo_s=max(0.01, min(opciones.tiempo_maximo_s, restante)))
+
     async def _bucle(
         self,
         estado: _Estado,
@@ -309,13 +322,14 @@ class EjecutorAgente:
         definiciones: list[DefinicionHerramienta],
         opciones: Opciones,
     ) -> None:
-        inicio = time.monotonic()
         limites = self._limites
         for _ in range(limites.vueltas):
-            if estado.llamadas >= limites.llamadas or time.monotonic() - inicio >= limites.bucle_s:
+            restante = self._restante(estado, limites.bucle_s)
+            if estado.llamadas >= limites.llamadas or restante <= 0:
                 return
             try:
-                respuesta = await self._modelo.conversar(mensajes, definiciones, opciones)
+                # Cada vuelta tiene a lo sumo lo que queda del bucle: así el reporte siempre tiene su tiempo.
+                respuesta = await self._modelo.conversar(mensajes, definiciones, self._recortar(opciones, restante))
             except ErrorLlm as error:
                 registro.warning(
                     "El modelo no respondió en el bucle de %s: %s", estado.ejecucion.id, type(error).__name__
@@ -325,7 +339,7 @@ class EjecutorAgente:
             if not respuesta.llamadas:
                 return
             for llamada in respuesta.llamadas:
-                if estado.llamadas >= limites.llamadas or time.monotonic() - inicio >= limites.bucle_s:
+                if estado.llamadas >= limites.llamadas or self._restante(estado, limites.bucle_s) <= 0:
                     contenido = self._error_para_modelo(
                         llamada.nombre, LIMITE_ALCANZADO, "Se alcanzó el límite de llamadas o de tiempo."
                     )
@@ -349,7 +363,8 @@ class EjecutorAgente:
         ]
         for intento in (1, 2):
             try:
-                salida = await self._modelo.generar_json(conversacion, esquema, opciones)
+                restante = self._restante(estado, self._limites.total_s) - MARGEN_S
+                salida = await self._modelo.generar_json(conversacion, esquema, self._recortar(opciones, restante))
             except SalidaNoValida:
                 # JSON ilegible o cortado: también tiene el reintento (y, si se repite, REPORTE_INVALIDO).
                 registrar_validacion(contexto=estado.ejecucion.id, operacion="reporte_agente", valida=False)
