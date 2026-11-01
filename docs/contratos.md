@@ -81,6 +81,50 @@ La revisión es una actualización atómica (`find_one_and_update` con `estado_r
 
 Las consultas del riesgo leen MongoDB (`prediccion`) y `reportes_db` (visibilidad); no calculan nada en la petición.
 
+### Reportes por voz: constructor de reportes (503)
+
+Los tres son solo para `admin` y `gerente` (los reportes cruzan todas las obras); `residente` recibe `403`. Detalle del catálogo, la receta y los atajos: `docs/specs/503-reportes-voz/diseno.md` de la carpeta general.
+
+```
+### POST /consultas-reporte · 503
+Servicio: IA · Quién llama: Gateway (60 s, sin reintento) · Roles: `admin`, `gerente`
+Recibe exactamente uno de `texto` (3 a 500 caracteres) o `atajo`; `directorio` lo agrega el gateway (opcional; hasta 1000 clientes):
+  { "texto": "¿Cuánto cemento se usó en Las Palmas este trimestre?", "directorio": { "clientes": [{ "id": "uuid-keycloak", "nombre": "Constructora Andina SRL" }] } }
+  { "atajo": "COBROS_POR_VENCER", "directorio": { "clientes": [] } }
+Devuelve: 200 {
+  "id": "uuid", "texto": "…", "atajo": null, "conjunto": "CONSUMO_MATERIAL", "tituloConjunto": "Material usado",
+  "receta": { "conjunto": "CONSUMO_MATERIAL", "filtros": […], "agruparPor": ["obra", "material"], "metricas": […], "orden": […], "limite": 100 },
+  "aplicado": [{ "nombre": "Obra", "valor": "contiene «Las Palmas»" }],
+  "resumen": "…", "resumenPlantilla": false, "avisos": [],
+  "columnas": [{ "clave": "obra", "titulo": "Obra", "tipo": "TEXTO" }],
+  "filas": [["Edificio Las Palmas", "Cemento IP-30", "bolsa", "1240.000", "76880.00", "31"]],
+  "totalFilas": 1, "truncado": false, "creadaEn": "2027-03-20T14:00:00Z"
+}
+`tipo` de columna: TEXTO, NUMERO, MONTO, PORCENTAJE, FECHA, BOOLEANO. Filas como texto (números con punto decimal y sin separador de miles, fechas ISO, booleanos true/false, nulos null); hasta 100 filas (`truncado` si hay más).
+Atajos: AVANCE_OBRAS, OBRAS_EN_RIESGO, CONSUMO_MATERIAL_MES, SALIDAS_SIN_STOCK, COBROS_VENCIDOS, COBROS_POR_VENCER, COBRADO_POR_OBRA, PLANILLAS_OBSERVADAS, PLANILLAS_APROBADAS, CONSUMOS_ATIPICOS_PENDIENTES (sin modelo de lenguaje para entender el pedido).
+Errores: 400 TEXTO_INVALIDO (largo fuera de 3 a 500) · 400 DATOS_INVALIDOS (ni `texto` ni `atajo`, los dos, atajo desconocido o `directorio` mal formado) · 422 INTENCION_NO_RECONOCIDA · 422 RECETA_INVALIDA (`errores[]` con `campo` = ruta en la receta y `mensaje` = la regla) · 429 DEMASIADAS_CONSULTAS (10 por minuto por usuario, con `Retry-After`) · 503 LLM_NO_DISPONIBLE (el modelo no responde al interpretar; nunca con un atajo) · 503 REPORTES_NO_DISPONIBLES (no responde `reportes_db` o `ia_db`, o la consulta pasa de 5 s) · 503 SERVICIO_NO_DISPONIBLE (Materiales con filtro de material, o sin directorio con filtro de cliente) · 504 TIEMPO_AGOTADO (más de 50 s dentro de IA) · 401 · 403
+Todos los casos, salvo 400, 401, 403 y 429, guardan `consulta_reporte`. El límite se cuenta antes de validar el cuerpo.
+
+### GET /consultas-reporte?limite= · 503
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`
+Las del usuario del token, más recientes primero; `limite` 1 a 20 (por defecto 10).
+Devuelve: 200 [{ "id", "texto", "atajo", "conjunto", "resultado", "resumen", "totalFilas", "creadaEn" }]   (`resultado`: OK, NO_RECONOCIDA, RECETA_INVALIDA, ERROR)
+Errores: 400 DATOS_INVALIDOS (`limite` fuera de 1 a 20) · 401 · 403
+
+### GET /catalogo-reportes · 503
+Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`
+Devuelve: 200 {
+  "conjuntos": [{ "conjunto": "CONSUMO_MATERIAL", "titulo": "Material usado", "descripcion": "…",
+                  "columnas": [{ "clave": "material", "titulo": "Material", "tipo": "TEXTO" }],
+                  "filtros": ["obra", "zona", "cliente", "material", "periodo"], "agrupaciones": ["obra", "zona", "cliente", "material", "periodo"],
+                  "ejemplos": ["¿Cuánto cemento se usó en Las Palmas este trimestre?"] }],
+  "atajos": [{ "atajo": "COBROS_POR_VENCER", "titulo": "Cobros que vencen en los próximos 30 días", "descripcion": "…" }]
+}   (el catálogo del modo REST)
+Errores: 401 · 403
+```
+
+- El modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) solo devuelve una **receta**; el código la valida contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados (usuario `ia_reportes_lector`, `READ ONLY`, 5 s). Nunca ejecuta SQL del modelo.
+
 - Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles reciben `403 SIN_PERMISO` en todo el servicio. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido).
 
 ## Escucha (cola `ia`, exchange `plataforma`)
@@ -117,3 +161,18 @@ Con el token del cliente confidencial `ia-reportes` (*client credentials*, rol d
 | 7 | Materiales `GET /obras/{id}/movimientos?pagina=N&tamano=100&orden=registradoEn&direccion=asc` (todas las páginas) | `id`, `materialId`, `tipo`, `cantidad`, `partidaId`, `periodo`, `superaStock`, `registradoEn` |
 
 Un `404 OBRA_NO_ENCONTRADA` de Materiales en el paso 7 se toma como «sin movimientos».
+
+## Consume (REST, reportes por voz · 503)
+
+| Servicio · endpoint | Token | Para qué |
+|---|---|---|
+| Materiales `GET /materiales?pagina=N&tamano=100` (todas las páginas; `IA_MATERIALES_URL`) | El del usuario que reenvía el gateway | Nombres y unidades de los materiales en las filas, y el filtro `material` (por `nombre` o `codigo`, sin distinguir mayúsculas ni tildes). Caché de 5 minutos, 3 s por llamada. No alimenta la base de reportes. Si no responde: con filtro `material`, `503 SERVICIO_NO_DISPONIBLE`; sin él, el id y el aviso «Nombres de materiales no disponibles» |
+
+Los nombres de los clientes no se piden a nadie: los trae el gateway en `directorio.clientes` (el servicio de IA no llama a Keycloak).
+
+## Consume (modelo de lenguaje · 503)
+
+| Proveedor (`IA_LLM_PROVEEDOR`) | Cliente | Para qué |
+|---|---|---|
+| `ollama` (por defecto) | `ollama` 0.6 (`AsyncClient(host=IA_OLLAMA_URL)`), modelo `IA_LLM_MODELO` (por defecto `qwen3:8b`) | Interpretar el pedido (receta, 20 s) y redactar el resumen (25 s) |
+| `anthropic` | `anthropic` 2 (`AsyncAnthropic`, Messages API), clave `IA_ANTHROPIC_API_KEY`, modelo `IA_LLM_MODELO` (por defecto `claude-sonnet-5-5`) | Ídem. Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic |
