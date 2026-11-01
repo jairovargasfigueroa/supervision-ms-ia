@@ -64,3 +64,27 @@ entrenamiento\epp\.venv\Scripts\python -c "import tensorflow as tf, keras; print
 ```
 
 Comprobado el 01/11/2026 en la computadora del equipo (Windows 11, Intel Core i7-11370H, 16 GB, sin GPU): Python 3.12.16, **TensorFlow 2.21.0** (rueda `cp312-win_amd64` de PyPI, la versión del diseño), Keras 3.15.1, NumPy 2.5.4, pandas 3.1.0, scikit-learn 1.9.1, Matplotlib 3.11.2 y Pillow 13.0.0. En Windows nativo TensorFlow corre solo en CPU (lo avisa al importarse); alcanza para MobileNetV3-Small sobre recortes. `EPP_HILOS` (4 por defecto) limita los hilos de TensorFlow para no tomar toda la máquina.
+
+## Recortes y etiquetas
+
+```powershell
+entrenamiento\epp\.venv\Scripts\python -m entrenamiento.epp.preparar_recortes    # datos/recortes/ (≈ 50 s)
+```
+
+`preparar_recortes.py` aplica las reglas del diseño («Etiquetado de recortes»): un recorte por persona de al menos 64 px de alto con margen de 10 %, `casco = 1` si un casco tiene ≥ 60 % de su área en el 40 % superior de la persona y `0` si hay un `no-helmet` ahí, `chaleco = 1` si un chaleco tiene ≥ 60 % de su área dentro de la persona y `0` si hay un `no-vest`; lo que no se puede decidir lleva peso 0. Escribe los recortes de 224 × 224 en `datos/recortes/<división>/`, `recortes.csv` (archivo, imagen, división, valor y peso de cada atributo) y `resumen.json`. La división 70 / 15 / 15 es **por imagen** (semilla 2026), sin mirar las partes del autor. Las reglas se prueban en `tests/entrenamiento/epp/test_preparar_recortes.py` (`uv run pytest`, sin TensorFlow).
+
+Decisiones técnicas (no cambian reglas del negocio):
+
+- Margen: 10 % del ancho a cada lado y 10 % del alto arriba y abajo, cortado en el borde de la imagen (la app recorta igual).
+- Si en la misma zona hay a la vez un casco y un `no-helmet` (o un chaleco y un `no-vest`), casi siempre por personas superpuestas, el atributo queda sin decidir (peso 0).
+- Una persona sin ninguno de los dos atributos decididos no se recorta.
+- Este dataset no está anotado por completo: la falta de un chaleco no se toma como «sin chaleco».
+
+Resultado con la semilla 2026 (1 206 imágenes, 2 817 personas; 13 de menos de 64 px y 190 sin ningún atributo decidido):
+
+| División | Imágenes | Recortes | Con casco | Sin casco | Casco sin decidir | Con chaleco | Sin chaleco | Chaleco sin decidir |
+|---|---|---|---|---|---|---|---|---|
+| Entrenamiento | 844 | 1 864 | 1 681 | 85 | 98 | 931 | 615 | 318 |
+| Validación | 181 | 383 | 356 | 9 | 18 | 205 | 120 | 58 |
+| Prueba | 181 | 367 | 324 | 24 | 19 | 174 | 133 | 60 |
+| **Total** | **1 206** | **2 614** | 2 361 | **118** | 135 | 1 310 | 868 | 436 |

@@ -1,0 +1,339 @@
+"""Recortes de personas con sus etiquetas de casco y chaleco (301).
+
+Lee las anotaciones COCO del dataset, recorta cada persona y le asigna dos etiquetas con las reglas del diseño
+(«Etiquetado de recortes» de ``docs/specs/301-deteccion-epp/diseno.md``):
+
+- Un recorte por caja de persona de al menos 64 px de alto, con margen de 10 %.
+- ``casco = 1`` si una caja de casco tiene ≥ 60 % de su área dentro del 40 % superior de la persona; ``casco = 0`` si
+  hay una caja de «sin casco» (o una cabeza sin casco) en esa zona.
+- ``chaleco = 1`` si una caja de chaleco tiene ≥ 60 % de su área dentro de la persona; ``chaleco = 0`` si hay una caja
+  de «sin chaleco» (o, en datasets anotados por completo, si no hay chaleco).
+- Lo que no se puede decidir lleva peso 0 en el entrenamiento; el otro atributo se usa igual.
+- División 70 / 15 / 15 por imagen (no por recorte).
+
+Las reglas son funciones puras (sin Pillow) para probarlas con cajas de ejemplo; Pillow solo se usa al recortar.
+
+Uso (desde ``services/ia``)::
+
+    entrenamiento/epp/.venv/Scripts/python -m entrenamiento.epp.preparar_recortes
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import random
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+CARPETA_EPP = Path(__file__).resolve().parent
+
+ALTO_MINIMO_PERSONA = 64.0
+MARGEN_RECORTE = 0.10
+ZONA_CABEZA = 0.40
+AREA_MINIMA_DENTRO = 0.60
+LADO_RECORTE = 224
+PROPORCIONES = (0.70, 0.15, 0.15)
+SEMILLA = 2026
+
+ENTRENAMIENTO = "entrenamiento"
+VALIDACION = "validacion"
+PRUEBA = "prueba"
+
+
+class Rol(StrEnum):
+    PERSONA = "persona"
+    CASCO = "casco"
+    SIN_CASCO = "sin_casco"
+    CABEZA = "cabeza"
+    CHALECO = "chaleco"
+    SIN_CHALECO = "sin_chaleco"
+
+
+# Clases del dataset Construction Safety (Roboflow 100, «construction-safety-gsnvb»). La supercategoría
+# «construction-safety» no tiene cajas. El dataset no está anotado por completo (no toda persona tiene casco/chaleco
+# o su negativo), así que la falta de chaleco no se toma como «sin chaleco».
+CLASES_GSNVB: Mapping[str, Rol] = {
+    "person": Rol.PERSONA,
+    "helmet": Rol.CASCO,
+    "no-helmet": Rol.SIN_CASCO,
+    "vest": Rol.CHALECO,
+    "no-vest": Rol.SIN_CHALECO,
+}
+
+
+@dataclass(frozen=True)
+class Caja:
+    """Caja en píxeles de la imagen, como en COCO: esquina superior izquierda, ancho y alto."""
+
+    x: float
+    y: float
+    ancho: float
+    alto: float
+
+    @property
+    def area(self) -> float:
+        return max(self.ancho, 0.0) * max(self.alto, 0.0)
+
+    def interseccion(self, otra: Caja) -> float:
+        ancho = min(self.x + self.ancho, otra.x + otra.ancho) - max(self.x, otra.x)
+        alto = min(self.y + self.alto, otra.y + otra.alto) - max(self.y, otra.y)
+        return max(ancho, 0.0) * max(alto, 0.0)
+
+    def fraccion_dentro(self, zona: Caja) -> float:
+        """Parte del área de esta caja que cae dentro de ``zona`` (0 a 1)."""
+        return self.interseccion(zona) / self.area if self.area > 0 else 0.0
+
+
+@dataclass(frozen=True)
+class Objeto:
+    rol: Rol
+    caja: Caja
+
+
+@dataclass(frozen=True)
+class Etiqueta:
+    """Valor 1 (lleva el EPP) o 0 (no lo lleva); peso 0 si no se pudo decidir (el valor entonces no se usa)."""
+
+    valor: int
+    peso: int
+
+    @staticmethod
+    def de(valor: int | None) -> Etiqueta:
+        return Etiqueta(0, 0) if valor is None else Etiqueta(valor, 1)
+
+
+@dataclass(frozen=True)
+class EtiquetasPersona:
+    casco: Etiqueta
+    chaleco: Etiqueta
+
+    @property
+    def tiene_alguna(self) -> bool:
+        return self.casco.peso > 0 or self.chaleco.peso > 0
+
+
+def zona_cabeza(persona: Caja) -> Caja:
+    """El 40 % superior de la caja de la persona (todo su ancho)."""
+    return Caja(persona.x, persona.y, persona.ancho, persona.alto * ZONA_CABEZA)
+
+
+def _alguno_dentro(objetos: Iterable[Objeto], rol: Rol, zona: Caja) -> bool:
+    return any(o.rol is rol and o.caja.fraccion_dentro(zona) >= AREA_MINIMA_DENTRO for o in objetos)
+
+
+def etiquetar_casco(persona: Caja, objetos: Sequence[Objeto]) -> int | None:
+    """1 con casco, 0 sin casco, ``None`` si no se puede decidir.
+
+    Si en la zona hay a la vez un casco y una caja de «sin casco» (personas superpuestas), no se decide
+    (decisión técnica: mejor sin etiqueta que con una etiqueta dudosa). Una cabeza en la zona cuenta como «sin
+    casco» solo si no hay casco.
+    """
+    zona = zona_cabeza(persona)
+    con_casco = _alguno_dentro(objetos, Rol.CASCO, zona)
+    sin_casco = _alguno_dentro(objetos, Rol.SIN_CASCO, zona)
+    if con_casco and sin_casco:
+        return None
+    if con_casco:
+        return 1
+    if sin_casco or _alguno_dentro(objetos, Rol.CABEZA, zona):
+        return 0
+    return None
+
+
+def etiquetar_chaleco(persona: Caja, objetos: Sequence[Objeto], *, anotado_por_completo: bool = False) -> int | None:
+    """1 con chaleco, 0 sin chaleco, ``None`` si no se puede decidir (chaleco y «sin chaleco» a la vez, o ninguno en
+    un dataset que no está anotado por completo)."""
+    con_chaleco = _alguno_dentro(objetos, Rol.CHALECO, persona)
+    sin_chaleco = _alguno_dentro(objetos, Rol.SIN_CHALECO, persona)
+    if con_chaleco and sin_chaleco:
+        return None
+    if con_chaleco:
+        return 1
+    if sin_chaleco or anotado_por_completo:
+        return 0
+    return None
+
+
+def etiquetar_persona(
+    persona: Caja, objetos: Sequence[Objeto], *, anotado_por_completo: bool = False
+) -> EtiquetasPersona:
+    return EtiquetasPersona(
+        casco=Etiqueta.de(etiquetar_casco(persona, objetos)),
+        chaleco=Etiqueta.de(etiquetar_chaleco(persona, objetos, anotado_por_completo=anotado_por_completo)),
+    )
+
+
+def persona_suficiente(persona: Caja) -> bool:
+    """Solo se recortan personas de al menos 64 px de alto (las más chicas no tienen detalle para clasificar)."""
+    return persona.alto >= ALTO_MINIMO_PERSONA
+
+
+def caja_recorte(persona: Caja, ancho_imagen: float, alto_imagen: float, margen: float = MARGEN_RECORTE) -> Caja:
+    """Caja de la persona agrandada un 10 % de su ancho a cada lado y un 10 % de su alto arriba y abajo, recortada a
+    los bordes de la imagen (la app de obra recorta igual)."""
+    x0 = max(persona.x - persona.ancho * margen, 0.0)
+    y0 = max(persona.y - persona.alto * margen, 0.0)
+    x1 = min(persona.x + persona.ancho + persona.ancho * margen, ancho_imagen)
+    y1 = min(persona.y + persona.alto + persona.alto * margen, alto_imagen)
+    return Caja(x0, y0, x1 - x0, y1 - y0)
+
+
+def dividir_por_imagen(
+    imagenes: Iterable[str], semilla: int = SEMILLA, proporciones: tuple[float, float, float] = PROPORCIONES
+) -> dict[str, str]:
+    """Asigna cada imagen (no cada recorte) a entrenamiento, validación o prueba (70 / 15 / 15), siempre igual para la
+    misma semilla y el mismo conjunto de imágenes."""
+    ids = sorted(set(imagenes))
+    random.Random(semilla).shuffle(ids)
+    n_entrenamiento = round(len(ids) * proporciones[0])
+    n_validacion = round(len(ids) * proporciones[1])
+    division: dict[str, str] = {}
+    for i, imagen in enumerate(ids):
+        if i < n_entrenamiento:
+            division[imagen] = ENTRENAMIENTO
+        elif i < n_entrenamiento + n_validacion:
+            division[imagen] = VALIDACION
+        else:
+            division[imagen] = PRUEBA
+    return division
+
+
+@dataclass(frozen=True)
+class ImagenAnotada:
+    clave: str  # parte/archivo, única en todo el dataset
+    ruta: Path
+    ancho: int
+    alto: int
+    objetos: tuple[Objeto, ...]
+
+
+def leer_coco(carpeta: Path, clases: Mapping[str, Rol] = CLASES_GSNVB) -> list[ImagenAnotada]:
+    """Lee ``<parte>/_annotations.coco.json`` de cada parte del dataset y junta todas las imágenes."""
+    imagenes: list[ImagenAnotada] = []
+    for anotaciones in sorted(carpeta.glob("*/_annotations.coco.json")):
+        parte = anotaciones.parent
+        datos = json.loads(anotaciones.read_text(encoding="utf-8"))
+        roles = {c["id"]: clases[c["name"]] for c in datos["categories"] if c["name"] in clases}
+        por_imagen: dict[int, list[Objeto]] = {}
+        for a in datos["annotations"]:
+            rol = roles.get(a["category_id"])
+            if rol is not None:
+                x, y, ancho, alto = (float(v) for v in a["bbox"])
+                por_imagen.setdefault(a["image_id"], []).append(Objeto(rol, Caja(x, y, ancho, alto)))
+        for img in datos["images"]:
+            imagenes.append(
+                ImagenAnotada(
+                    clave=f"{parte.name}/{img['file_name']}",
+                    ruta=parte / img["file_name"],
+                    ancho=int(img["width"]),
+                    alto=int(img["height"]),
+                    objetos=tuple(por_imagen.get(img["id"], [])),
+                )
+            )
+    return imagenes
+
+
+COLUMNAS = ("archivo", "imagen", "division", "casco", "peso_casco", "chaleco", "peso_chaleco")
+
+
+def preparar(
+    dataset: Path, salida: Path, *, semilla: int = SEMILLA, anotado_por_completo: bool = False
+) -> dict[str, object]:
+    """Recorta las personas de todas las imágenes, guarda los recortes de 224 × 224 y ``recortes.csv``; devuelve el
+    resumen (también en ``resumen.json``)."""
+    from PIL import Image  # solo aquí: las reglas se prueban sin Pillow
+
+    imagenes = leer_coco(dataset)
+    if not imagenes:
+        raise SystemExit(f"No hay anotaciones COCO en {dataset}: corre antes descargar_dataset.")
+    division = dividir_por_imagen((i.clave for i in imagenes), semilla)
+    salida.mkdir(parents=True, exist_ok=True)
+    filas: list[dict[str, object]] = []
+    descartes: Counter[str] = Counter()
+    for imagen in imagenes:
+        personas = [o.caja for o in imagen.objetos if o.rol is Rol.PERSONA]
+        if not personas:
+            continue
+        with Image.open(imagen.ruta) as original:
+            rgb = original.convert("RGB")
+        for n, persona in enumerate(personas):
+            if not persona_suficiente(persona):
+                descartes["persona_chica"] += 1
+                continue
+            etiquetas = etiquetar_persona(persona, imagen.objetos, anotado_por_completo=anotado_por_completo)
+            if not etiquetas.tiene_alguna:
+                descartes["sin_etiquetas"] += 1
+                continue
+            caja = caja_recorte(persona, imagen.ancho, imagen.alto)
+            recorte = rgb.crop((round(caja.x), round(caja.y), round(caja.x + caja.ancho), round(caja.y + caja.alto)))
+            recorte = recorte.resize((LADO_RECORTE, LADO_RECORTE), Image.Resampling.BILINEAR)
+            parte = division[imagen.clave]
+            nombre = f"{parte}/{Path(imagen.clave).stem}_{imagen.clave.split('/')[0]}_{n:02d}.jpg"
+            (salida / parte).mkdir(exist_ok=True)
+            recorte.save(salida / nombre, quality=95)
+            filas.append(
+                {
+                    "archivo": nombre,
+                    "imagen": imagen.clave,
+                    "division": parte,
+                    "casco": etiquetas.casco.valor,
+                    "peso_casco": etiquetas.casco.peso,
+                    "chaleco": etiquetas.chaleco.valor,
+                    "peso_chaleco": etiquetas.chaleco.peso,
+                }
+            )
+    with (salida / "recortes.csv").open("w", encoding="utf-8", newline="") as f:
+        escritor = csv.DictWriter(f, fieldnames=COLUMNAS)
+        escritor.writeheader()
+        escritor.writerows(filas)
+    resumen = _resumen(filas, len(imagenes), division, descartes, semilla)
+    (salida / "resumen.json").write_text(json.dumps(resumen, indent=2, ensure_ascii=False), encoding="utf-8")
+    return resumen
+
+
+def _resumen(
+    filas: Sequence[Mapping[str, object]],
+    total_imagenes: int,
+    division: Mapping[str, str],
+    descartes: Mapping[str, int],
+    semilla: int,
+) -> dict[str, object]:
+    por_division: dict[str, dict[str, int]] = {}
+    for parte in (ENTRENAMIENTO, VALIDACION, PRUEBA):
+        de_parte = [f for f in filas if f["division"] == parte]
+        por_division[parte] = {
+            "imagenes": sum(1 for v in division.values() if v == parte),
+            "recortes": len(de_parte),
+            "con_casco": sum(1 for f in de_parte if f["peso_casco"] == 1 and f["casco"] == 1),
+            "sin_casco": sum(1 for f in de_parte if f["peso_casco"] == 1 and f["casco"] == 0),
+            "casco_indeterminado": sum(1 for f in de_parte if f["peso_casco"] == 0),
+            "con_chaleco": sum(1 for f in de_parte if f["peso_chaleco"] == 1 and f["chaleco"] == 1),
+            "sin_chaleco": sum(1 for f in de_parte if f["peso_chaleco"] == 1 and f["chaleco"] == 0),
+            "chaleco_indeterminado": sum(1 for f in de_parte if f["peso_chaleco"] == 0),
+        }
+    return {
+        "semilla": semilla,
+        "imagenes": total_imagenes,
+        "recortes": len(filas),
+        "descartes": dict(descartes),
+        "por_division": por_division,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Recortes de personas con etiquetas de casco y chaleco (301).")
+    parser.add_argument("--dataset", type=Path, default=CARPETA_EPP / "datos" / "gsnvb")
+    parser.add_argument("--salida", type=Path, default=CARPETA_EPP / "datos" / "recortes")
+    parser.add_argument("--semilla", type=int, default=SEMILLA)
+    args = parser.parse_args()
+    resumen = preparar(args.dataset, args.salida, semilla=args.semilla)
+    print(json.dumps(resumen, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
