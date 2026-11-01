@@ -17,6 +17,11 @@ from ia.comun.http import instalar_http
 from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
 from ia.config import Configuracion, ConfiguracionInvalida
+from ia.constructor_reportes.aplicacion.puertos import CatalogoMateriales
+from ia.constructor_reportes.infraestructura.materiales_rest import CatalogoMaterialesRest
+from ia.constructor_reportes.infraestructura.web import router as rutas_constructor
+from ia.lenguaje.aplicacion.puerto import ModeloLenguaje
+from ia.lenguaje.infraestructura.componer import crear_modelo_lenguaje
 from ia.reportes.infraestructura.web import router as rutas_reportes
 from ia.riesgo.aplicacion.puertos import ModeloRiesgo
 from ia.riesgo.infraestructura.modelo_xgboost import cargar_modelo
@@ -32,6 +37,9 @@ def crear_app(
     motor: AsyncEngine | None = None,
     modelo_riesgo: ModeloRiesgo | None = None,
     cargar_modelo_riesgo: bool = True,
+    motor_lector: AsyncEngine | None = None,
+    modelo_lenguaje: ModeloLenguaje | None = None,
+    catalogo_materiales: CatalogoMateriales | None = None,
 ) -> FastAPI:
     config = config or Configuracion()
 
@@ -39,7 +47,10 @@ def crear_app(
     async def ciclo_de_vida(app: FastAPI) -> AsyncIterator[None]:
         # Ninguna de las dos conexiones se abre hasta la primera consulta: /salud no depende de ellas.
         propio = motor is None
+        lector_propio = motor_lector is None
         app.state.motor = motor or crear_motor(config.reportes_db_url)
+        # 503: usuario de solo lectura para el constructor de reportes.
+        app.state.motor_lector = motor_lector or crear_motor(config.reportes_db_url_lectura, tamano_pool=5)
         app.state.mongo = crear_cliente_mongo(config.mongo_url)
         app.state.ia_db = app.state.mongo[config.mongo_db]
         await asegurar_indices_al_arrancar(app.state.ia_db)
@@ -49,6 +60,8 @@ def crear_app(
             await app.state.mongo.close()
             if propio:
                 await app.state.motor.dispose()
+            if lector_propio:
+                await app.state.motor_lector.dispose()
 
     app = FastAPI(
         lifespan=ciclo_de_vida,
@@ -63,6 +76,9 @@ def crear_app(
     app.state.modelo_riesgo = modelo_riesgo or (
         cargar_modelo(config.modelos_dir, config.modelo_riesgo_version) if cargar_modelo_riesgo else None
     )
+    # 503: modelo de lenguaje (Ollama o Anthropic) y catálogo de Materiales con el token del usuario.
+    app.state.modelo_lenguaje = modelo_lenguaje or crear_modelo_lenguaje(config)
+    app.state.catalogo_materiales = catalogo_materiales or CatalogoMaterialesRest(config.materiales_url)
     app.state.validador_token = validador or ValidadorToken(
         ProveedorJwks(config.jwks_url), emisor=config.keycloak_issuer, audiencia=config.audiencia
     )
@@ -76,6 +92,7 @@ def crear_app(
     app.include_router(rutas_reportes)
     app.include_router(rutas_riesgo)
     app.include_router(rutas_atipicos)
+    app.include_router(rutas_constructor)
     return app
 
 

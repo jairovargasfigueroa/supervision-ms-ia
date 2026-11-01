@@ -4,7 +4,8 @@ Cada respuesta del guion puede ser:
 - para `generar_json`: un `dict`, una excepción (se lanza) o una función `(mensajes, esquema) -> dict`;
 - para `conversar`: una `RespuestaModelo`, una lista de `LlamadaHerramienta` (sin texto), un `str` (solo texto), una
   excepción o una función `(mensajes, herramientas) -> RespuestaModelo`.
-Si el guion se acaba, `generar_json` lanza `AssertionError` y `conversar` responde «sin más llamadas».
+Si el guion se acaba, `generar_json` lanza `LlmNoDisponible` (como un modelo caído) y `conversar` responde «sin más
+llamadas».
 """
 
 import asyncio
@@ -12,7 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ia.lenguaje.aplicacion.puerto import LlmTiempoAgotado
+from ia.lenguaje.aplicacion.puerto import LlmNoDisponible, LlmTiempoAgotado
 from ia.lenguaje.dominio.mensajes import (
     DefinicionHerramienta,
     LlamadaHerramienta,
@@ -65,7 +66,8 @@ class ModeloSimulado:
     ) -> dict[str, Any]:
         self.llamadas.append(LlamadaRegistrada("generar_json", list(mensajes), opciones, esquema=esquema))
         await self._esperar(opciones)
-        assert self._json, "El guion de generar_json se acabó"
+        if not self._json:
+            raise LlmNoDisponible("El guion de generar_json se acabó.")
         siguiente = self._json.pop(0)
         if isinstance(siguiente, BaseException):
             raise siguiente

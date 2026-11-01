@@ -13,6 +13,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Nombres: catálogo de Materiales con el token del usuario (caché de 5 min) y directorio de clientes del cuerpo; avisos y `503 SERVICIO_NO_DISPONIBLE` cuando falta lo necesario para un filtro
 - [x] `InterpretarPedido` (catálogo compacto, `<pregunta_usuario>`, 20 s) y resumen (datos con `como_dato`, 25 s, plantilla de respaldo)
 - [x] Repositorios de `consulta_reporte` y `limite_consulta` (TTL y `$inc` atómico) en `ia_db`
-- [ ] Endpoints `POST /consultas-reporte`, `GET /consultas-reporte`, `GET /catalogo-reportes` (solo `admin` y `gerente`) con sus errores
+- [x] Endpoints `POST /consultas-reporte`, `GET /consultas-reporte`, `GET /catalogo-reportes` (solo `admin` y `gerente`) con sus errores
 - [ ] Pruebas del diseño con `ModeloSimulado`, PostgreSQL con las migraciones de la 401 y MongoDB reales (incluidos los permisos de `ia_reportes_lector`)
 - [ ] Prueba manual con cada proveedor (Ollama y Anthropic): 20 preguntas de ejemplo y los 10 atajos, con resultados anotados en el README

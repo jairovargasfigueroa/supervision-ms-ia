@@ -40,7 +40,8 @@ class LimitadorConsultasMongo:
         return int(documento["cuenta"]), segundos
 
     async def _incrementar(self, clave: str, actualizacion: dict[str, Any]) -> dict[str, Any]:
-        documento: dict[str, Any] = await self._coleccion.find_one_and_update(
+        documento = await self._coleccion.find_one_and_update(
             {"_id": clave}, actualizacion, upsert=True, return_document=ReturnDocument.AFTER
         )
+        assert documento is not None  # con upsert y AFTER siempre hay documento
         return documento

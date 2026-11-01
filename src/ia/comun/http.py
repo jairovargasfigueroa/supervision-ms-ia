@@ -36,7 +36,7 @@ def respuesta_problema(error: ErrorApi) -> JSONResponse:
         cuerpo["detail"] = error.detalle
     if error.errores:
         cuerpo["errores"] = [{"campo": e.campo, "mensaje": e.mensaje} for e in error.errores]
-    return JSONResponse(cuerpo, status_code=error.estado, media_type=TIPO_PROBLEMA)
+    return JSONResponse(cuerpo, status_code=error.estado, media_type=TIPO_PROBLEMA, headers=error.encabezados or None)
 
 
 class MiddlewareRequestId:
