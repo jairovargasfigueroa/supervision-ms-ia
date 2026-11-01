@@ -5,7 +5,6 @@ from typing import Literal
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 PROVEEDORES_LLM = ("ollama", "anthropic")
 MODELO_LLM_POR_DEFECTO = {"ollama": "qwen3:8b", "anthropic": "claude-sonnet-5-5"}
 
@@ -43,7 +42,9 @@ class Configuracion(BaseSettings):
     finanzas_url: str = "http://localhost:8083"
 
     # 503: usuario de solo lectura de reportes_db para el constructor de reportes.
-    reportes_db_url_lectura: str = "postgresql+psycopg://ia_reportes_lector:ia_reportes_lector@localhost:5433/reportes_db"
+    reportes_db_url_lectura: str = (
+        "postgresql+psycopg://ia_reportes_lector:ia_reportes_lector@localhost:5433/reportes_db"
+    )
 
     # 503: modelo de lenguaje (lo reutiliza la 502). `ollama` u `anthropic`; otro valor: el servicio no arranca.
     llm_proveedor: str = "ollama"
