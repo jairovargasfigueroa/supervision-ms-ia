@@ -21,6 +21,10 @@ class IndiceMongo:
     claves: tuple[tuple[str, int], ...]
     nombre: str
     unico: bool = False
+    expira_despues_s: int | None = None
+    """Índice TTL (`expireAfterSeconds`; 503: `limite_consulta`)."""
+    filtro_parcial: tuple[tuple[str, Any], ...] | None = None
+    """Índice parcial (`partialFilterExpression`; 502: sugerencias pendientes)."""
 
 
 _INDICES: list[IndiceMongo] = []
@@ -44,7 +48,12 @@ def crear_cliente_mongo(url: str) -> AsyncMongoClient[dict[str, Any]]:
 async def asegurar_indices(base: AsyncDatabase[dict[str, Any]]) -> int:
     """Crea los índices registrados (idempotente). Devuelve cuántos revisó."""
     for indice in _INDICES:
-        await base[indice.coleccion].create_index(list(indice.claves), name=indice.nombre, unique=indice.unico)
+        opciones: dict[str, Any] = {"name": indice.nombre, "unique": indice.unico}
+        if indice.expira_despues_s is not None:
+            opciones["expireAfterSeconds"] = indice.expira_despues_s
+        if indice.filtro_parcial is not None:
+            opciones["partialFilterExpression"] = dict(indice.filtro_parcial)
+        await base[indice.coleccion].create_index(list(indice.claves), **opciones)
     return len(_INDICES)
 
 
