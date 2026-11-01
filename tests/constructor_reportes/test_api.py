@@ -2,6 +2,7 @@
 `ModeloSimulado`."""
 
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -14,6 +15,7 @@ from apoyo import reportes_503 as d
 from apoyo.tokens import GERENTE_ID, RESIDENTE_ID, encabezado
 from constructor_reportes.apoyo_api import DIRECTORIO, MaterialesSimulados, cliente_api
 from dobles.modelo_simulado import ModeloSimulado
+from ia.comun.tiempo import RelojFijo
 from ia.lenguaje.aplicacion.puerto import LlmNoDisponible, LlmTiempoAgotado
 
 pytestmark = pytest.mark.integracion
@@ -224,15 +226,14 @@ async def test_limite_de_10_por_minuto_tambien_con_atajos(api: tuple[httpx.Async
 
 
 async def test_historial_y_catalogo(api: tuple[httpx.AsyncClient, FastAPI]) -> None:
-    http, _ = api
-    for atajo in ("AVANCE_OBRAS", "COBROS_VENCIDOS", "PLANILLAS_OBSERVADAS"):
+    http, app = api
+    for segundos, atajo in enumerate(("AVANCE_OBRAS", "COBROS_VENCIDOS", "PLANILLAS_OBSERVADAS")):
+        # Un instante distinto por consulta: con el mismo instante, el orden entre ellas no está definido.
+        app.state.reloj = RelojFijo(d.AHORA + timedelta(seconds=segundos))
         await http.post("/consultas-reporte", json={"atajo": atajo}, headers=GERENTE)
     historial = await http.get("/consultas-reporte", params={"limite": 2}, headers=GERENTE)
     assert historial.status_code == 200
-    assert [h["atajo"] for h in historial.json()] in (
-        ["PLANILLAS_OBSERVADAS", "COBROS_VENCIDOS"],
-        ["COBROS_VENCIDOS", "PLANILLAS_OBSERVADAS"],
-    )  # mismo instante del reloj fijo
+    assert [h["atajo"] for h in historial.json()] == ["PLANILLAS_OBSERVADAS", "COBROS_VENCIDOS"]
     assert set(historial.json()[0]) == {
         "id",
         "texto",
