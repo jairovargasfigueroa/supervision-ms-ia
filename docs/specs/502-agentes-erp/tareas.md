@@ -14,4 +14,4 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Filtros de visibilidad del residente con la utilidad de la 401 (`rpt_obra_resumen.residente_id`) y exclusión de `CONTROL_COBROS`
 - [x] Endpoints en `ia-api`: `GET /agentes`, `POST /agentes/{agente}/ejecuciones`, `GET /ejecuciones`, `GET /ejecuciones/{id}`, `GET /hallazgos`, `GET /sugerencias`, `POST /sugerencias/{id}/aprobar` y `/rechazar`, con roles y errores
 - [x] Pruebas del diseño con `ModeloSimulado` y servidores MCP de prueba (incluido el mismo guion con los dos adaptadores simulados a nivel HTTP)
-- [ ] Prueba manual con el modelo real, con cada proveedor (Ollama y Anthropic), documentada en el README
+- [ ] Prueba manual con el modelo real, con cada proveedor (Ollama y Anthropic), documentada en el README (pendiente por decisión de Jairo, 01/11/2026; mediciones parciales con Ollama en el README)
