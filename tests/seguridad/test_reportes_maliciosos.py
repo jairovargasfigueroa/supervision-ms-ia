@@ -197,9 +197,18 @@ def test_s11_el_lector_no_escribe_ni_lee_tablas_internas(url_lector: str) -> Non
     try:
         with motor.connect() as conexion:
             for sentencia in prohibidas:
-                with pytest.raises(DBAPIError):
+                # Se quita la defensa de `default_transaction_read_only` para comprobar que fallan por permisos.
+                conexion.execute(text("SET TRANSACTION READ WRITE"))
+                with pytest.raises(DBAPIError) as error:
                     conexion.execute(text(sentencia))
+                mensaje = str(error.value.orig)
+                assert "permission denied" in mensaje or "must be owner" in mensaje, (sentencia, mensaje)
                 conexion.rollback()
+            # Y la otra defensa: sin `SET TRANSACTION READ WRITE`, la transacción del lector es de solo lectura.
+            with pytest.raises(DBAPIError) as solo_lectura:
+                conexion.execute(text("DELETE FROM rpt_movimiento"))
+            assert "read-only transaction" in str(solo_lectura.value.orig)
+            conexion.rollback()
     finally:
         motor.dispose()
 
