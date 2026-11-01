@@ -1,5 +1,6 @@
 """Ejecuciones de los agentes y sugerencias (502): estados y entidades (sin base de datos)."""
 
+import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Final
@@ -89,6 +90,22 @@ class Ejecucion:
     error: ErrorEjecucion | None = None
     pasos: tuple[Paso, ...] = field(default=())
     hallazgos: tuple[HallazgoGuardado, ...] = field(default=())
+
+    @staticmethod
+    def nueva(
+        agente: str, origen: str, solicitada_por: str | None, ahora: datetime, proveedor_llm: str, modelo: str
+    ) -> "Ejecucion":
+        """`EN_CURSO`, sin tomar; guarda el proveedor y el modelo de lenguaje que va a usar."""
+        return Ejecucion(
+            id=str(uuid.uuid4()),
+            agente=agente,
+            origen=origen,
+            estado=EN_CURSO,
+            solicitada_por=solicitada_por,
+            iniciada_en=ahora,
+            proveedor_llm=proveedor_llm,
+            modelo=modelo,
+        )
 
     def terminar(self, resumen: str, hallazgos: tuple[HallazgoGuardado, ...], en: datetime) -> "Ejecucion":
         return replace(self, estado=TERMINADA, resumen=resumen, hallazgos=hallazgos, terminada_en=en)
