@@ -85,10 +85,15 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.mypy]
 python_version = "3.12"
 mypy_path = "src"
-packages = ["ia", "ml"]
+packages = ["ia", "ml", "entrenamiento"]
 strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = ["aio_pika.*", "apscheduler.*", "testcontainers.*", "sklearn.*", "joblib.*", "yaml.*", "pandas.*"]
+ignore_missing_imports = true
+
+# Entrenamiento de la 301: TensorFlow, Keras, Pillow y Matplotlib solo están en entrenamiento/epp/.venv.
+[[tool.mypy.overrides]]
+module = ["tensorflow.*", "keras.*", "PIL.*", "matplotlib.*"]
 ignore_missing_imports = true

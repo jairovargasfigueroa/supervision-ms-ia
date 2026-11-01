@@ -155,7 +155,21 @@ modelos/riesgo_retraso/           actual.txt y rr-X.Y.Z/ (modelo.ubj, variables.
 ml/atipicos/                      (403) generar.py + parametros.yaml (datos sintéticos), entrenar.py; datos/ no se versiona
 modelos/consumos_atipicos/        versiones del modelo (modelo.joblib, percentiles.json, metricas.json, parametros.yaml)
                                   y actual.txt
-tests/                            espejo de src/ia (y tests/ml); las de PostgreSQL o MongoDB reales llevan «integracion»
+entrenamiento/epp/                (301) clasificador de casco y chaleco para la app de obra; entorno propio (.venv, no se versiona)
+  requirements-entrenamiento.txt  tensorflow 2.21, keras 3, numpy, pandas, scikit-learn, matplotlib, pillow (+ ipykernel,
+                                  nbconvert y pytest para ejecutar el notebook y las pruebas con TensorFlow)
+  README.md                       dataset (fuente, licencia, cita, descarga), comandos, métricas y versión entregada
+  descargar_dataset.py            descarga Construction Safety (Roboflow 100) y SHEL5K en datos/ (sin cuentas ni claves)
+  preparar_recortes.py            reglas de etiquetado (funciones puras) y recortes de personas de los dos datasets
+                                  (SHEL5K se lee desde su .zip), con división 70/15/15 por imagen
+  clasificador.py                 datos, modelo MobileNetV3-Small, entrenamiento en dos fases, métricas, umbrales,
+                                  exportación a TFLite float16 y equivalencia Keras/TFLite (lo llama el notebook)
+  entrenar_clasificador_epp.ipynb entrenamiento, evaluación, umbrales, matriz de confusión y exportación (con salidas)
+  datos/                          dataset y recortes (no se versiona)
+  salida/                         clasificador_epp.tflite, epp.json, metricas.json, matriz_confusion.png (se versionan);
+                                  saved_model/ y modelo .keras (no se versionan)
+tests/                            espejo de src/ia (y tests/ml, tests/entrenamiento); las de PostgreSQL o MongoDB reales
+                                  llevan «integracion»; las de entrenamiento con TensorFlow se saltan si no está instalado
 ```
 
 ## Cómo se agrega un módulo hermano (402, 403)
@@ -165,6 +179,12 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - Eventos: el manejador de cada tipo lo registra `reportes` (`ia.reportes.infraestructura.eventos.registrar_manejadores`). Un módulo agrega pasos con `ConsumidorMensajes.agregar_previo(tipo, paso)` (corre **antes** de la transacción de PostgreSQL; idempotente por clave, por ejemplo MongoDB de la 403) y `agregar_posterior(tipo, paso)` (corre **después** de confirmarla y solo si el evento se aplicó, por ejemplo la predicción de la 402). Si un paso falla, el mensaje se reintenta como cualquier fallo.
 - Tareas programadas: agregar el trabajo en `ia.worker` (mismo `AsyncIOScheduler`, zona del negocio).
 - Índices de MongoDB: `ia.comun.mongo.registrar_indice(...)` en el módulo (con TTL o filtro parcial si hace falta); el worker y la API los aseguran al arrancar.
+
+## Entrenamiento de casco y chaleco (capa 3, 301)
+
+- Entorno aparte (`entrenamiento/epp/.venv`, `requirements-entrenamiento.txt`): el servicio no instala TensorFlow, Keras ni Pillow. Solo `clasificador.py`, el notebook y `tests/entrenamiento/epp/test_equivalencia_tflite.py` importan TensorFlow.
+- `preparar_recortes.py` separa las reglas de etiquetado (funciones puras, sin Pillow) de la lectura del dataset y el recorte de imágenes (Pillow se importa dentro de la función que recorta), para que sus pruebas corran con `uv run pytest`.
+- El modelo corre en el celular (`mobile/app-obra/assets/modelos/`); el servicio no lo carga.
 
 ## MCP (capa 5, 501)
 

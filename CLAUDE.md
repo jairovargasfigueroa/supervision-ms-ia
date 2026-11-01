@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`) y 301 (entrenamiento del clasificador de casco y chaleco que corre en la app de obra: `entrenamiento/epp/`, con su propio entorno y TensorFlow; el servicio no lo usa). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
@@ -58,6 +58,13 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - En la capa 5 (`agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/`, `seguridad/`) solo `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` tocan SQL, y solo `atipicos_mongo.py` arma filtros de MongoDB para el catálogo (lo comprueba `tests/seguridad/test_arquitectura.py`).
 - No se registran tokens, encabezados `Authorization`, la clave del modelo, el secreto de `ia-agentes` ni el texto completo de los mensajes.
 - Las pruebas con entradas maliciosas (`tests/seguridad/`, catálogo S1–S18, G1–G14, M1–M6, K1–K2) corren con `uv run pytest` como las demás y deben pasar completas.
+
+### Entrenamiento de casco y chaleco (capa 3, 301)
+
+- `entrenamiento/epp/` tiene su **propio entorno** (`entrenamiento/epp/.venv` con `requirements-entrenamiento.txt`: TensorFlow 2.21 y Keras 3). Nunca se agrega TensorFlow, Keras ni Pillow al `pyproject.toml` del servicio.
+- El modelo no lo carga el servicio: `salida/clasificador_epp.tflite` y `salida/epp.json` se copian a `mobile/app-obra/assets/modelos/` y corren en el celular.
+- Solo se versionan el código, el notebook (con sus salidas), `salida/clasificador_epp.tflite`, `salida/epp.json`, `salida/metricas.json` y la matriz de confusión en PNG. Nunca el dataset (`datos/`) ni `salida/saved_model/`.
+- Las reglas de etiquetado (`preparar_recortes.py`) son funciones puras probadas con `uv run pytest` (`tests/entrenamiento/`); las pruebas que necesitan TensorFlow se saltan en el entorno del servicio y corren en el de entrenamiento.
 
 ## Documentación
 

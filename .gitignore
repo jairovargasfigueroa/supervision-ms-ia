@@ -16,3 +16,9 @@ build/
 
 # Datos generados por ml/*/generar.py (se rearman con la semilla)
 ml/*/datos/
+
+# Entrenamiento de casco y chaleco (301): dataset, recortes y modelos intermedios no se versionan
+entrenamiento/**/datos/
+entrenamiento/**/salida/saved_model/
+entrenamiento/**/salida/*.keras
+entrenamiento/**/.venv/
