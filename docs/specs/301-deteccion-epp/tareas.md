@@ -8,6 +8,6 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Elegir el dataset (Construction Site Safety, SH17 u otro público de EPP con personas, casco y chaleco): revisar licencia y clases, y documentar la fuente, la cita y la descarga en `entrenamiento/epp/README.md`
 - [x] `requirements-entrenamiento.txt` (Python 3.12, `tensorflow` 2.21, `keras` 3, `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `pillow`) y comprobación del entorno local
 - [x] `preparar_recortes.py`: recortes de personas, etiquetas `casco`/`chaleco` con pesos 0 para lo indeterminado, división 70/15/15 por imagen; pruebas de las reglas de etiquetado con cajas de ejemplo
-- [ ] Notebook `entrenar_clasificador_epp.ipynb`: MobileNetV3-Small en dos fases, aumentos, evaluación con las métricas mínimas, elección de umbrales y matriz de confusión
+- [x] Notebook `entrenar_clasificador_epp.ipynb`: MobileNetV3-Small en dos fases, aumentos, evaluación con las métricas mínimas, elección de umbrales y matriz de confusión
 - [ ] Exportar a TFLite float16 y comprobar la equivalencia con Keras (50 recortes, diferencia ≤ 0,02); guardar `clasificador_epp.tflite`, `epp.json` y `metricas.json` en `salida/`
 - [ ] Copiar los modelos a `mobile/app-obra/assets/modelos/` (junto con `efficientdet_lite0.tflite` int8) y anotar en el README la versión entregada

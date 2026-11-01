@@ -65,6 +65,20 @@ CLASES_GSNVB: Mapping[str, Rol] = {
     "no-vest": Rol.SIN_CHALECO,
 }
 
+# Clases de SHEL5K (Mendeley Data, «Safety Helmet Wearing Dataset»). Las cajas de persona («person_with_helmet»,
+# «person_no_helmet» y unas pocas «person») se etiquetan con las mismas reglas geométricas que las demás: casco en la
+# zona de la cabeza → con casco; «head» (cabeza sin casco) en esa zona → sin casco. «head_with_helmet» y «face» no se
+# usan. SHEL5K no anota chalecos: el chaleco de sus personas queda sin decidir (peso 0).
+CLASES_SHEL5K: Mapping[str, Rol] = {
+    "person_with_helmet": Rol.PERSONA,
+    "person_no_helmet": Rol.PERSONA,
+    "person": Rol.PERSONA,
+    "helmet": Rol.CASCO,
+    "head": Rol.CABEZA,
+}
+
+FUENTES = ("gsnvb", "shel5k")
+
 
 @dataclass(frozen=True)
 class Caja:
@@ -205,14 +219,16 @@ def dividir_por_imagen(
 
 @dataclass(frozen=True)
 class ImagenAnotada:
-    clave: str  # parte/archivo, única en todo el dataset
-    ruta: Path
+    fuente: str
+    clave: str  # fuente/…/archivo, única entre todas las fuentes (la división es por esta clave)
+    ruta: Path  # archivo de la imagen o, si ``miembro`` no es None, el .zip que la contiene
     ancho: int
     alto: int
     objetos: tuple[Objeto, ...]
+    miembro: str | None = None
 
 
-def leer_coco(carpeta: Path, clases: Mapping[str, Rol] = CLASES_GSNVB) -> list[ImagenAnotada]:
+def leer_coco(carpeta: Path, clases: Mapping[str, Rol] = CLASES_GSNVB, fuente: str = "gsnvb") -> list[ImagenAnotada]:
     """Lee ``<parte>/_annotations.coco.json`` de cada parte del dataset y junta todas las imágenes."""
     imagenes: list[ImagenAnotada] = []
     for anotaciones in sorted(carpeta.glob("*/_annotations.coco.json")):
@@ -228,7 +244,8 @@ def leer_coco(carpeta: Path, clases: Mapping[str, Rol] = CLASES_GSNVB) -> list[I
         for img in datos["images"]:
             imagenes.append(
                 ImagenAnotada(
-                    clave=f"{parte.name}/{img['file_name']}",
+                    fuente=fuente,
+                    clave=f"{fuente}/{parte.name}/{img['file_name']}",
                     ruta=parte / img["file_name"],
                     ancho=int(img["width"]),
                     alto=int(img["height"]),
@@ -238,71 +255,152 @@ def leer_coco(carpeta: Path, clases: Mapping[str, Rol] = CLASES_GSNVB) -> list[I
     return imagenes
 
 
-COLUMNAS = ("archivo", "imagen", "division", "casco", "peso_casco", "chaleco", "peso_chaleco")
+def leer_voc_zip(
+    archivo: Path, clases: Mapping[str, Rol] = CLASES_SHEL5K, fuente: str = "shel5k"
+) -> list[ImagenAnotada]:
+    """Lee las anotaciones Pascal VOC (``…/Annotations/*.xml``) de un .zip sin extraerlo; la imagen de cada XML se
+    busca en ``…/Images/`` del mismo .zip con el mismo nombre (formato de SHEL5K)."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    imagenes: list[ImagenAnotada] = []
+    with zipfile.ZipFile(archivo) as z:
+        nombres = set(z.namelist())
+        for xml in sorted(n for n in nombres if n.endswith(".xml") and "/Annotations/" in n):
+            raiz = ET.fromstring(z.read(xml))
+            carpeta, archivo_xml = xml.rsplit("/Annotations/", 1)
+            base = archivo_xml[: -len(".xml")]
+            posibles = (f"{carpeta}/Images/{base}.png", f"{carpeta}/Images/{base}.jpg")
+            miembro = next((m for m in posibles if m in nombres), None)
+            if miembro is None:
+                continue
+            objetos: list[Objeto] = []
+            for o in raiz.iter("object"):
+                rol = clases.get(o.findtext("name", ""))
+                caja = o.find("bndbox")
+                if rol is None or caja is None:
+                    continue
+                x0, y0, x1, y1 = (float(caja.findtext(k, "0")) for k in ("xmin", "ymin", "xmax", "ymax"))
+                objetos.append(Objeto(rol, Caja(x0, y0, x1 - x0, y1 - y0)))
+            imagenes.append(
+                ImagenAnotada(
+                    fuente=fuente,
+                    clave=f"{fuente}/{base}",
+                    ruta=archivo,
+                    ancho=int(raiz.findtext("size/width", "0")),
+                    alto=int(raiz.findtext("size/height", "0")),
+                    objetos=tuple(objetos),
+                    miembro=miembro,
+                )
+            )
+    return imagenes
+
+
+COLUMNAS = ("archivo", "fuente", "imagen", "division", "casco", "peso_casco", "chaleco", "peso_chaleco")
+
+
+def leer_fuentes(fuentes: Sequence[str], datos: Path) -> list[ImagenAnotada]:
+    imagenes: list[ImagenAnotada] = []
+    for fuente in fuentes:
+        if fuente == "gsnvb":
+            imagenes += leer_coco(datos / "gsnvb", CLASES_GSNVB, fuente)
+        elif fuente == "shel5k":
+            imagenes += leer_voc_zip(datos / "shel5k" / "shel5k.zip", CLASES_SHEL5K, fuente)
+        else:
+            raise SystemExit(f"Fuente desconocida: {fuente}")
+    return imagenes
 
 
 def preparar(
-    dataset: Path, salida: Path, *, semilla: int = SEMILLA, anotado_por_completo: bool = False
+    datos: Path,
+    salida: Path,
+    *,
+    fuentes: Sequence[str] = FUENTES,
+    semilla: int = SEMILLA,
+    anotado_por_completo: bool = False,
 ) -> dict[str, object]:
     """Recorta las personas de todas las imágenes, guarda los recortes de 224 × 224 y ``recortes.csv``; devuelve el
     resumen (también en ``resumen.json``)."""
+    import io
+    import zipfile
+
     from PIL import Image  # solo aquí: las reglas se prueban sin Pillow
 
-    imagenes = leer_coco(dataset)
+    imagenes = leer_fuentes(fuentes, datos)
     if not imagenes:
-        raise SystemExit(f"No hay anotaciones COCO en {dataset}: corre antes descargar_dataset.")
+        raise SystemExit(f"No hay anotaciones en {datos}: corre antes descargar_dataset.")
     division = dividir_por_imagen((i.clave for i in imagenes), semilla)
     salida.mkdir(parents=True, exist_ok=True)
     filas: list[dict[str, object]] = []
     descartes: Counter[str] = Counter()
-    for imagen in imagenes:
-        personas = [o.caja for o in imagen.objetos if o.rol is Rol.PERSONA]
-        if not personas:
-            continue
-        with Image.open(imagen.ruta) as original:
-            rgb = original.convert("RGB")
-        for n, persona in enumerate(personas):
-            if not persona_suficiente(persona):
-                descartes["persona_chica"] += 1
+    zips: dict[Path, zipfile.ZipFile] = {}
+    try:
+        for imagen in imagenes:
+            personas = [o.caja for o in imagen.objetos if o.rol is Rol.PERSONA]
+            if not personas:
                 continue
-            etiquetas = etiquetar_persona(persona, imagen.objetos, anotado_por_completo=anotado_por_completo)
-            if not etiquetas.tiene_alguna:
-                descartes["sin_etiquetas"] += 1
-                continue
-            caja = caja_recorte(persona, imagen.ancho, imagen.alto)
-            recorte = rgb.crop((round(caja.x), round(caja.y), round(caja.x + caja.ancho), round(caja.y + caja.alto)))
-            recorte = recorte.resize((LADO_RECORTE, LADO_RECORTE), Image.Resampling.BILINEAR)
-            parte = division[imagen.clave]
-            nombre = f"{parte}/{Path(imagen.clave).stem}_{imagen.clave.split('/')[0]}_{n:02d}.jpg"
-            (salida / parte).mkdir(exist_ok=True)
-            recorte.save(salida / nombre, quality=95)
-            filas.append(
-                {
-                    "archivo": nombre,
-                    "imagen": imagen.clave,
-                    "division": parte,
-                    "casco": etiquetas.casco.valor,
-                    "peso_casco": etiquetas.casco.peso,
-                    "chaleco": etiquetas.chaleco.valor,
-                    "peso_chaleco": etiquetas.chaleco.peso,
-                }
-            )
+            if imagen.miembro is None:
+                with Image.open(imagen.ruta) as original:
+                    rgb = original.convert("RGB")
+            else:
+                z = zips.setdefault(imagen.ruta, zipfile.ZipFile(imagen.ruta))
+                with Image.open(io.BytesIO(z.read(imagen.miembro))) as original:
+                    rgb = original.convert("RGB")
+            for n, persona in enumerate(personas):
+                if not persona_suficiente(persona):
+                    descartes["persona_chica"] += 1
+                    continue
+                etiquetas = etiquetar_persona(persona, imagen.objetos, anotado_por_completo=anotado_por_completo)
+                if not etiquetas.tiene_alguna:
+                    descartes["sin_etiquetas"] += 1
+                    continue
+                caja = caja_recorte(persona, rgb.width, rgb.height)
+                limites = (round(caja.x), round(caja.y), round(caja.x + caja.ancho), round(caja.y + caja.alto))
+                recorte = rgb.crop(limites).resize((LADO_RECORTE, LADO_RECORTE), Image.Resampling.BILINEAR)
+                parte = division[imagen.clave]
+                nombre = f"{parte}/{imagen.clave.replace('/', '_').rsplit('.', 1)[0]}_{n:02d}.jpg"
+                (salida / parte).mkdir(exist_ok=True)
+                recorte.save(salida / nombre, quality=95)
+                filas.append(
+                    {
+                        "archivo": nombre,
+                        "fuente": imagen.fuente,
+                        "imagen": imagen.clave,
+                        "division": parte,
+                        "casco": etiquetas.casco.valor,
+                        "peso_casco": etiquetas.casco.peso,
+                        "chaleco": etiquetas.chaleco.valor,
+                        "peso_chaleco": etiquetas.chaleco.peso,
+                    }
+                )
+    finally:
+        for z in zips.values():
+            z.close()
     with (salida / "recortes.csv").open("w", encoding="utf-8", newline="") as f:
         escritor = csv.DictWriter(f, fieldnames=COLUMNAS)
         escritor.writeheader()
         escritor.writerows(filas)
-    resumen = _resumen(filas, len(imagenes), division, descartes, semilla)
+    resumen = {
+        "semilla": semilla,
+        "fuentes": list(fuentes),
+        "imagenes": len(imagenes),
+        "recortes": len(filas),
+        "descartes": dict(descartes),
+        "por_division": cuentas(filas, division),
+        "por_fuente": {
+            fuente: cuentas(
+                [f for f in filas if f["fuente"] == fuente],
+                {k: v for k, v in division.items() if k.startswith(f"{fuente}/")},
+            )
+            for fuente in fuentes
+        },
+    }
     (salida / "resumen.json").write_text(json.dumps(resumen, indent=2, ensure_ascii=False), encoding="utf-8")
     return resumen
 
 
-def _resumen(
-    filas: Sequence[Mapping[str, object]],
-    total_imagenes: int,
-    division: Mapping[str, str],
-    descartes: Mapping[str, int],
-    semilla: int,
-) -> dict[str, object]:
+def cuentas(filas: Sequence[Mapping[str, object]], division: Mapping[str, str]) -> dict[str, dict[str, int]]:
+    """Imágenes, recortes y etiquetas por división."""
     por_division: dict[str, dict[str, int]] = {}
     for parte in (ENTRENAMIENTO, VALIDACION, PRUEBA):
         de_parte = [f for f in filas if f["division"] == parte]
@@ -316,22 +414,17 @@ def _resumen(
             "sin_chaleco": sum(1 for f in de_parte if f["peso_chaleco"] == 1 and f["chaleco"] == 0),
             "chaleco_indeterminado": sum(1 for f in de_parte if f["peso_chaleco"] == 0),
         }
-    return {
-        "semilla": semilla,
-        "imagenes": total_imagenes,
-        "recortes": len(filas),
-        "descartes": dict(descartes),
-        "por_division": por_division,
-    }
+    return por_division
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recortes de personas con etiquetas de casco y chaleco (301).")
-    parser.add_argument("--dataset", type=Path, default=CARPETA_EPP / "datos" / "gsnvb")
+    parser.add_argument("--datos", type=Path, default=CARPETA_EPP / "datos")
     parser.add_argument("--salida", type=Path, default=CARPETA_EPP / "datos" / "recortes")
+    parser.add_argument("--fuentes", nargs="+", default=list(FUENTES), choices=list(FUENTES))
     parser.add_argument("--semilla", type=int, default=SEMILLA)
     args = parser.parse_args()
-    resumen = preparar(args.dataset, args.salida, semilla=args.semilla)
+    resumen = preparar(args.datos, args.salida, fuentes=args.fuentes, semilla=args.semilla)
     print(json.dumps(resumen, indent=2, ensure_ascii=False))
 
 

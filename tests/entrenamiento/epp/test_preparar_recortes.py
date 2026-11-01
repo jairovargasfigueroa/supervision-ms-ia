@@ -1,6 +1,7 @@
 """Reglas de etiquetado de los recortes de personas (301) con cajas de ejemplo."""
 
 import json
+import zipfile
 from pathlib import Path
 
 from entrenamiento.epp.preparar_recortes import (
@@ -17,6 +18,7 @@ from entrenamiento.epp.preparar_recortes import (
     etiquetar_chaleco,
     etiquetar_persona,
     leer_coco,
+    leer_voc_zip,
     persona_suficiente,
     zona_cabeza,
 )
@@ -152,9 +154,39 @@ def test_leer_coco_junta_las_partes_y_traduce_las_clases(tmp_path: Path) -> None
 
     imagenes = leer_coco(tmp_path)
 
-    assert sorted(i.clave for i in imagenes) == ["test/a.jpg", "train/a.jpg"]
+    assert sorted(i.clave for i in imagenes) == ["gsnvb/test/a.jpg", "gsnvb/train/a.jpg"]
+    assert {i.fuente for i in imagenes} == {"gsnvb"}
     assert imagenes[0].objetos == (
         Objeto(Rol.PERSONA, Caja(10, 20, 30, 100)),
         Objeto(Rol.CASCO, Caja(15, 20, 20, 15)),
     )
     assert (imagenes[0].ancho, imagenes[0].alto) == (640, 480)
+
+
+VOC = """<annotation><filename>{nombre}.png</filename>
+<size><width>416</width><height>415</height><depth>3</depth></size>
+<object><name>person_no_helmet</name>
+<bndbox><xmin>10</xmin><ymin>20</ymin><xmax>110</xmax><ymax>220</ymax></bndbox></object>
+<object><name>head</name><bndbox><xmin>40</xmin><ymin>22</ymin><xmax>80</xmax><ymax>62</ymax></bndbox></object>
+<object><name>face</name><bndbox><xmin>45</xmin><ymin>30</ymin><xmax>75</xmax><ymax>60</ymax></bndbox></object>
+</annotation>"""
+
+
+def test_leer_voc_zip_lee_shel5k_sin_extraer_y_etiqueta_la_cabeza_como_sin_casco(tmp_path: Path) -> None:
+    archivo = tmp_path / "shel5k.zip"
+    with zipfile.ZipFile(archivo, "w") as z:
+        z.writestr("raiz/Safety Helmet Wearing Dataset/Annotations/hh1.xml", VOC.format(nombre="hh1"))
+        z.writestr("raiz/Safety Helmet Wearing Dataset/Images/hh1.png", b"png")
+        z.writestr("raiz/Safety Helmet Wearing Dataset/Annotations/sin_imagen.xml", VOC.format(nombre="sin_imagen"))
+
+    imagenes = leer_voc_zip(archivo)
+
+    assert [i.clave for i in imagenes] == ["shel5k/hh1"]
+    imagen = imagenes[0]
+    assert imagen.miembro == "raiz/Safety Helmet Wearing Dataset/Images/hh1.png"
+    assert (imagen.ancho, imagen.alto) == (416, 415)
+    persona = Caja(10, 20, 100, 200)
+    assert imagen.objetos == (Objeto(Rol.PERSONA, persona), Objeto(Rol.CABEZA, Caja(40, 22, 40, 40)))
+    etiquetas = etiquetar_persona(persona, imagen.objetos)
+    assert etiquetas.casco == Etiqueta(0, 1)
+    assert etiquetas.chaleco == Etiqueta(0, 0)  # SHEL5K no anota chalecos

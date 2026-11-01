@@ -159,8 +159,9 @@ entrenamiento/epp/                (301) clasificador de casco y chaleco para la 
   requirements-entrenamiento.txt  tensorflow 2.21, keras 3, numpy, pandas, scikit-learn, matplotlib, pillow (+ ipykernel,
                                   nbconvert y pytest para ejecutar el notebook y las pruebas con TensorFlow)
   README.md                       dataset (fuente, licencia, cita, descarga), comandos, métricas y versión entregada
-  descargar_dataset.py            descarga el dataset público en datos/ (sin cuentas ni claves)
-  preparar_recortes.py            reglas de etiquetado (funciones puras) y recortes de personas con división por imagen
+  descargar_dataset.py            descarga Construction Safety (Roboflow 100) y SHEL5K en datos/ (sin cuentas ni claves)
+  preparar_recortes.py            reglas de etiquetado (funciones puras) y recortes de personas de los dos datasets
+                                  (SHEL5K se lee desde su .zip), con división 70/15/15 por imagen
   clasificador.py                 datos, modelo MobileNetV3-Small, entrenamiento en dos fases, métricas, umbrales,
                                   exportación a TFLite float16 y equivalencia Keras/TFLite (lo llama el notebook)
   entrenar_clasificador_epp.ipynb entrenamiento, evaluación, umbrales, matriz de confusión y exportación (con salidas)
