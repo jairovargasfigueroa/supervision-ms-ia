@@ -82,6 +82,22 @@ El servicio de IA es el **host** de los agentes (502) y también uno de los cuat
 - **Cliente** (`ia-worker`): token de `ia-agentes` por *client credentials* (caché hasta 30 s antes de vencer), `tools/list` de los cuatro servidores (Obras, Materiales, Finanzas e IA) al iniciar cada ejecución de agente, 10 s por llamada y `X-Request-Id` = id de la ejecución. Lo que un servidor publica fuera del contrato (u otro esquema) se ignora con una advertencia.
 - Argumentos que no cumplen el esquema → `ARGUMENTO_INVALIDO` sin consultar la base; obra inexistente → `OBRA_NO_ENCONTRADA`; base o `ia_db` caídas → `ERROR_INTERNO` (resultados con `isError`, no errores del protocolo).
 
+## Agentes (502)
+
+Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`, en `agentes/dominio/definiciones.py`) que `ia-worker` ejecuta a las 06:00 de La Paz (`IA_AGENTES_CRON`, se apaga con `IA_AGENTES_PROGRAMADOS_ACTIVOS=false`) y a pedido (`POST /agentes/{agente}/ejecuciones` en `ia-api`). El servicio es el **host**: modelo de lenguaje (puerto `ModeloLenguaje`, 503) + cliente MCP (501).
+
+- **Cola:** la propia colección `ejecucion_agente`; `ia-worker` revisa cada 2 s y toma la `EN_CURSO` más antigua sin `tomada_en` (`find_one_and_update`), una a la vez. Al iniciar, las `EN_CURSO` de más de 10 minutos pasan a `FALLIDA` (`INTERRUMPIDA`). La diaria no repite un agente con una ejecución `PROGRAMADA` de hoy.
+- **Ejecución:** `tools/list` de los servidores del agente (lo que no está en el contrato se ignora); pasos iniciales; bucle con `conversar` (máximo 6 vueltas, 8 llamadas, 150 s); reporte con `generar_json` validado (un reintento); sugerencias `PENDIENTE` sin duplicar; todo en 3 minutos. Cada paso se guarda al momento (`$push`).
+- **Mínimo privilegio:** el modelo solo ve las herramientas del agente y, en `consultar_reporte`, sus conjuntos; otra herramienta → paso `HERRAMIENTA_NO_PERMITIDA`; argumentos fuera del esquema del contrato (o un conjunto ajeno) → `ARGUMENTO_INVALIDO` sin llamar al servidor.
+- **Decisión humana:** aprobar solo registra la decisión (no llama a otros servicios ni publica eventos); rechazar exige motivo de 10 a 500 caracteres.
+
+Decisiones técnicas de la implementación:
+
+- El límite de 8 llamadas cuenta **cada pedido** de herramienta (también los rechazados por no permitidos o por argumentos): así un modelo que insiste en pedir lo prohibido no alarga la ejecución. Los pedidos que pasan el límite no se ejecutan ni se guardan como paso; vuelven al modelo con `LIMITE_ALCANZADO` (Anthropic exige una respuesta por cada `tool_use`).
+- Un servidor que no responde a `tools/list` queda como paso con `herramienta = "tools/list"` y error `SERVIDOR_NO_DISPONIBLE: …` (no cuenta para el límite); el resumen termina con «(Sin respuesta de: …)».
+- Códigos de `FALLIDA` además de los del diseño: `LLM_NO_DISPONIBLE` (el modelo no respondió al pedir el reporte) y `ERROR_INTERNO` (error inesperado).
+- Si una obra salió en los datos sin nombre (por ejemplo, solo en `cobros_por_vencer`), `obra_nombre` es «Obra sin nombre en los datos».
+
 ## Autenticación y visibilidad
 
 - Toda ruta salvo `/salud` exige un token de Keycloak válido (firma por JWKS, vencimiento, emisor `IA_KEYCLOAK_ISSUER`, audiencia `plataforma-api`): sin él, `401 NO_AUTENTICADO`. Si Keycloak no responde al pedir el JWKS: `503 SERVICIO_NO_DISPONIBLE`.
