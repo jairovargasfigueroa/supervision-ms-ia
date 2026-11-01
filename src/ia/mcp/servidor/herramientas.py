@@ -2,6 +2,7 @@
 
 - `riesgo_retraso`: última predicción de la 402 de las obras `EN_EJECUCION`.
 - `consumos_atipicos`: consumos atípicos de la 403 (el agente no los revisa: no hay herramienta que escriba).
+- `consultar_reporte`: la receta de la 503 en modo `MCP`, con el mismo `validar_receta` y `MotorReportes`.
 
 Cada una llama a un caso de uso de consulta de su módulo. Las dependencias (motor, `ia_db`, reloj) se leen del
 estado de la app en cada llamada (las crea el *lifespan*).
@@ -20,7 +21,27 @@ from ia.atipicos.aplicacion.errores import ObraNoEncontrada as AtipicoObraNoEnco
 from ia.atipicos.infraestructura.obras_sql import ObrasReportesSql
 from ia.atipicos.infraestructura.repositorio_mongo import RepositorioAtipicosMongo
 from ia.comun.tiempo import Reloj, RelojSistema
-from ia.mcp.servidor.servidor import OBRA_NO_ENCONTRADA, ErrorHerramienta, Herramienta
+from ia.constructor_reportes.aplicacion.motor import MotorReportes
+from ia.constructor_reportes.aplicacion.puertos import ReportesNoDisponibles
+from ia.constructor_reportes.dominio.catalogo import CATALOGO, MCP
+from ia.constructor_reportes.dominio.receta import RecetaReporte
+from ia.constructor_reportes.dominio.resultado import describir_aplicado
+from ia.constructor_reportes.dominio.validacion import (
+    LIMITE_MCP,
+    IntencionNoReconocida,
+    RecetaInvalida,
+    validar_receta,
+)
+from ia.constructor_reportes.infraestructura.atipicos_mongo import ConsultaAtipicosMongo
+from ia.constructor_reportes.infraestructura.ejecutor_sql import EjecutorReportes, EjecutorSql
+from ia.mcp.servidor.servidor import (
+    ARGUMENTO_INVALIDO,
+    ERROR_INTERNO,
+    OBRA_NO_ENCONTRADA,
+    PROBLEMAS_MAXIMOS,
+    ErrorHerramienta,
+    Herramienta,
+)
 from ia.riesgo.aplicacion.consultas import ObraNoEncontrada as RiesgoObraNoEncontrada
 from ia.riesgo.aplicacion.consultas import PrediccionesEnEjecucion, PrediccionesFiltradas
 from ia.riesgo.aplicacion.puertos import Prediccion
@@ -30,9 +51,9 @@ from ia.riesgo.infraestructura.predicciones_mongo import AlmacenPrediccionesMong
 MOTIVO_MAXIMO = 200
 
 
+# Argumentos en camelCase y sin campos de más (`additionalProperties: false`). Los modelos de entrada y salida no
+# llevan docstring: pasaría a la descripción del esquema.
 class Entrada(BaseModel):
-    """Argumentos en camelCase y sin campos de más (`additionalProperties: false`)."""
-
     model_config = ConfigDict(extra="forbid", alias_generator=to_camel, frozen=True)
 
 
@@ -210,6 +231,91 @@ def herramienta_atipicos(estado: State) -> Herramienta:
     )
 
 
+# --- consultar_reporte (motor de la 503) ----------------------------------------------------------------------------
+
+ConjuntoMcp = Literal["OBRAS", "CONSUMO_MATERIAL", "MOVIMIENTOS", "COBROS", "PLANILLAS", "CONSUMOS_ATIPICOS"]
+
+
+# La receta de la 503 en modo `MCP`, en el primer nivel: sin `NINGUNO`, límite de 1 a 50 y solo `agruparPor` (sin el
+# nombre de Python `agrupar_por`). Que cada clave exista en el conjunto lo revisa `validar_receta`. Sin docstring: el
+# docstring de un modelo pasa a la descripción del esquema que lee el modelo de lenguaje.
+class EntradaReporte(RecetaReporte):
+    model_config = ConfigDict(extra="forbid", populate_by_name=False, frozen=True)
+
+    conjunto: ConjuntoMcp
+    limite: StrictInt | None = Field(default=None, ge=1, le=LIMITE_MCP)
+
+
+class AplicadoSalida(Salida):
+    nombre: str
+    valor: str
+
+
+class ColumnaSalida(Salida):
+    clave: str
+    titulo: str
+    tipo: str
+
+
+class SalidaReporte(Salida):
+    conjunto: str
+    titulo: str
+    aplicado: list[AplicadoSalida]
+    columnas: list[ColumnaSalida]
+    filas: list[list[str | None]]
+    total_filas: int
+    truncado: bool
+    avisos: list[str]
+
+
+def crear_motor_mcp(estado: State) -> MotorReportes:
+    """El mismo `MotorReportes` de `POST /consultas-reporte` (usuario `ia_reportes_lector`), sin catálogo de
+    Materiales: en el modo `MCP` los materiales y clientes van por id."""
+    sql = EjecutorSql(estado.motor_lector)
+    return MotorReportes(EjecutorReportes(sql, ConsultaAtipicosMongo(estado.ia_db, sql, estado.config.zona_horaria)))
+
+
+def herramienta_reporte(estado: State) -> Herramienta:
+    async def ejecutar(entrada: EntradaReporte) -> SalidaReporte:
+        hoy = reloj_de(estado).hoy()
+        try:
+            receta = validar_receta(entrada.model_dump(by_alias=True, exclude_none=True), MCP, hoy)
+        except IntencionNoReconocida as error:
+            raise ErrorHerramienta(ARGUMENTO_INVALIDO, f"Receta inválida: {error}") from error
+        except RecetaInvalida as error:
+            problemas = [f"{e.campo}: {e.mensaje}" for e in error.errores[:PROBLEMAS_MAXIMOS]]
+            raise ErrorHerramienta(ARGUMENTO_INVALIDO, "Receta inválida: " + "; ".join(problemas)) from error
+        try:
+            resultado = await crear_motor_mcp(estado).ejecutar(receta, hoy)
+        except ReportesNoDisponibles as error:
+            raise ErrorHerramienta(
+                ERROR_INTERNO, "La base de reportes no respondió o la consulta pasó de 5 s."
+            ) from error
+        return SalidaReporte(
+            conjunto=receta.conjunto,
+            titulo=CATALOGO[receta.conjunto].titulo,
+            aplicado=[AplicadoSalida(nombre=e.nombre, valor=e.valor) for e in describir_aplicado(receta)],
+            columnas=[ColumnaSalida(clave=c.clave, titulo=c.titulo, tipo=c.tipo) for c in resultado.columnas],
+            filas=resultado.filas,
+            total_filas=resultado.total_filas,
+            truncado=resultado.truncado,
+            avisos=resultado.avisos,
+        )
+
+    return Herramienta(
+        nombre="consultar_reporte",
+        descripcion=(
+            "Devuelve un reporte de datos históricos que cruzan servicios (obras, material usado, movimientos, "
+            "cobros, planillas aprobadas u observadas, consumos atípicos), armado con una receta del catálogo. Los "
+            "datos pueden ir hasta un día atrasados; para el dato de hoy usa las otras herramientas."
+        ),
+        entrada=EntradaReporte,
+        salida=SalidaReporte,
+        ejecutar=ejecutar,
+        filas=lambda s: len(s.filas),
+    )
+
+
 def herramientas_ia(estado: State) -> list[Herramienta]:
     """Las herramientas del contrato (501), en orden."""
-    return [herramienta_riesgo(estado), herramienta_atipicos(estado)]
+    return [herramienta_reporte(estado), herramienta_riesgo(estado), herramienta_atipicos(estado)]
