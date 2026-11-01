@@ -34,6 +34,7 @@ from ia.agentes.dominio.ejecucion import (
     ARGUMENTO_INVALIDO,
     EJECUCION_TIEMPO_AGOTADO,
     HERRAMIENTA_NO_PERMITIDA,
+    INTERRUMPIDA,
     LIMITE_ALCANZADO,
     LLM_NO_DISPONIBLE,
     REPORTE_INVALIDO,
@@ -107,6 +108,13 @@ class EjecutorAgente:
         try:
             async with asyncio.timeout(self._limites.total_s):
                 await self._ejecutar(ejecucion, time.monotonic())
+        except asyncio.CancelledError:
+            # Se apaga el worker: la ejecución no queda EN_CURSO para siempre (409 y diaria omitida).
+            registro.warning("La ejecución %s del agente %s se canceló.", ejecucion.id, ejecucion.agente)
+            await asyncio.shield(
+                self._fallar(ejecucion, INTERRUMPIDA, "La ejecución se interrumpió porque el servicio se detuvo.")
+            )
+            raise
         except TimeoutError:
             registro.warning("La ejecución %s del agente %s pasó el tiempo máximo.", ejecucion.id, ejecucion.agente)
             await self._fallar(ejecucion, EJECUCION_TIEMPO_AGOTADO, "La ejecución pasó el tiempo máximo (3 minutos).")

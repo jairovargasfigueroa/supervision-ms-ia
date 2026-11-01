@@ -32,8 +32,15 @@ class RepositorioEjecuciones(Protocol):
 
     async def fallar(self, ejecucion_id: str, error: ErrorEjecucion, en: datetime) -> None: ...
 
-    async def recuperar_interrumpidas(self, iniciadas_antes_de: datetime, ahora: datetime) -> int:
-        """Las `EN_CURSO` iniciadas antes de `iniciadas_antes_de` pasan a `FALLIDA` con `INTERRUMPIDA`."""
+    async def recuperar_interrumpidas(
+        self,
+        ahora: datetime,
+        *,
+        iniciadas_antes_de: datetime | None = None,
+        tomadas_antes_de: datetime | None = None,
+    ) -> int:
+        """Pasan a `FALLIDA` con `INTERRUMPIDA` las `EN_CURSO` iniciadas antes de `iniciadas_antes_de` o tomadas por
+        un worker antes de `tomadas_antes_de`."""
         ...
 
     async def obtener(self, ejecucion_id: str) -> Ejecucion | None: ...
