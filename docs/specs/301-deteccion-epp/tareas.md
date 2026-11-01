@@ -5,7 +5,7 @@ Requisitos y diseño: `docs/specs/301-deteccion-epp/` de `supervision-docs` (car
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Aplicar «Cambios a contratos y datos» que toquen este proyecto y documentar `entrenamiento/epp/` en `docs/estructura.md` y `CLAUDE.md`; `.gitignore` ignora `entrenamiento/**/datos/` y `entrenamiento/**/salida/saved_model/`
-- [ ] Elegir el dataset (Construction Site Safety, SH17 u otro público de EPP con personas, casco y chaleco): revisar licencia y clases, y documentar la fuente, la cita y la descarga en `entrenamiento/epp/README.md`
+- [x] Elegir el dataset (Construction Site Safety, SH17 u otro público de EPP con personas, casco y chaleco): revisar licencia y clases, y documentar la fuente, la cita y la descarga en `entrenamiento/epp/README.md`
 - [ ] `requirements-entrenamiento.txt` (Python 3.12, `tensorflow` 2.21, `keras` 3, `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `pillow`) y comprobación del entorno local
 - [ ] `preparar_recortes.py`: recortes de personas, etiquetas `casco`/`chaleco` con pesos 0 para lo indeterminado, división 70/15/15 por imagen; pruebas de las reglas de etiquetado con cajas de ejemplo
 - [ ] Notebook `entrenar_clasificador_epp.ipynb`: MobileNetV3-Small en dos fases, aumentos, evaluación con las métricas mínimas, elección de umbrales y matriz de confusión
