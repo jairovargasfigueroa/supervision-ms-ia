@@ -1,8 +1,9 @@
 """Resultado de un reporte (filas como texto), lo aplicado en texto para la persona, totales y plantilla del resumen."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from ia.constructor_reportes.dominio.catalogo import MONTO, NUMERO
 from ia.constructor_reportes.dominio.receta import LIMITE_REST
@@ -31,6 +32,22 @@ class Resultado:
     @property
     def total_filas(self) -> int:
         return len(self.filas)
+
+
+def valor_texto(valor: Any) -> str | None:
+    """Filas como texto: números con punto decimal y sin separador de miles, fechas ISO, booleanos `true`/`false`,
+    nulos como `None` (`null` en JSON)."""
+    if valor is None:
+        return None
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, Decimal):
+        return format(valor, "f")
+    if isinstance(valor, float):
+        return format(Decimal(str(round(valor, 4))), "f")
+    if isinstance(valor, datetime | date):
+        return valor.isoformat()
+    return str(valor)
 
 
 def describir_aplicado(receta: RecetaValidada) -> list[ElementoAplicado]:

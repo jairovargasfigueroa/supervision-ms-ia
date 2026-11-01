@@ -9,7 +9,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] Módulo `src/ia/lenguaje/`: puerto `ModeloLenguaje` (`conversar` y `generar_json`), errores, `adaptar_esquema` por proveedor, adaptadores `ModeloOllama` y `ModeloAnthropic`, `crear_modelo_lenguaje`; `ModeloSimulado` en `tests/dobles/`; pruebas de los adaptadores con transporte HTTP simulado
 - [x] Migración de Alembic con los `GRANT SELECT` de `ia_reportes_lector` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla`
 - [x] `constructor_reportes/dominio/`: catálogo de los 6 conjuntos (modos `REST` y `MCP`), `RecetaReporte`, `validar_receta` (en orden, con `errores[]`), atajos y resultado (plantilla del resumen)
-- [ ] Motor: `expresiones.py` y `constructor_sql.py` (SQLAlchemy Core, solo valores enlazados, escape de `ILIKE`, `limite + 1`), `ejecutor_sql.py` (lector, `READ ONLY`, 5 s) y `atipicos_mongo.py` (filtro y agregación con constantes, 5 s); conversión de filas a texto
+- [x] Motor: `expresiones.py` y `constructor_sql.py` (SQLAlchemy Core, solo valores enlazados, escape de `ILIKE`, `limite + 1`), `ejecutor_sql.py` (lector, `READ ONLY`, 5 s) y `atipicos_mongo.py` (filtro y agregación con constantes, 5 s); conversión de filas a texto
 - [ ] Nombres: catálogo de Materiales con el token del usuario (caché de 5 min) y directorio de clientes del cuerpo; avisos y `503 SERVICIO_NO_DISPONIBLE` cuando falta lo necesario para un filtro
 - [ ] `InterpretarPedido` (catálogo compacto, `<pregunta_usuario>`, 20 s) y resumen (datos con `como_dato`, 25 s, plantilla de respaldo)
 - [ ] Repositorios de `consulta_reporte` y `limite_consulta` (TTL y `$inc` atómico) en `ia_db`

@@ -7,7 +7,13 @@ import pytest
 
 from ia.constructor_reportes.dominio.atajos import ATAJOS
 from ia.constructor_reportes.dominio.catalogo import CATALOGO, MCP, REST
-from ia.constructor_reportes.dominio.resultado import Resultado, describir_aplicado, resumen_plantilla, totales
+from ia.constructor_reportes.dominio.resultado import (
+    Resultado,
+    describir_aplicado,
+    resumen_plantilla,
+    totales,
+    valor_texto,
+)
 from ia.constructor_reportes.dominio.validacion import (
     Columna,
     FiltroValidado,
@@ -248,3 +254,15 @@ def test_totales_de_montos_y_numeros() -> None:
         truncado=False,
     )
     assert totales(resultado) == {"filas": "3", "suma de Total Monto": "14.75"}
+
+
+def test_valores_como_texto() -> None:
+    from decimal import Decimal
+
+    assert valor_texto(Decimal("1240.000")) == "1240.000"
+    assert valor_texto(Decimal("1E+3")) == "1000"
+    assert valor_texto(0.7134567) == "0.7135"
+    assert valor_texto(True) == "true"
+    assert valor_texto(date(2027, 3, 1)) == "2027-03-01"
+    assert valor_texto(31) == "31"
+    assert valor_texto(None) is None
