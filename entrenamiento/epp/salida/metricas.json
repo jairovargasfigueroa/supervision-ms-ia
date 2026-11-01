@@ -1,0 +1,293 @@
+{
+  "version": "1.0.0",
+  "versionModelo": "epp-1.0.0",
+  "fecha": "2026-11-01T10:09:20+00:00",
+  "datasets": [
+    "Construction Safety (Roboflow 100, construction-safety-gsnvb), CC BY 4.0",
+    "SHEL5K (Mendeley Data, doi:10.17632/9rcv8mm682.4), CC BY 4.0"
+  ],
+  "clasePositiva": "falta de EPP (sin casco, sin chaleco)",
+  "minimos": {
+    "sensibilidad_falta": 0.85,
+    "precision_falta": 0.75,
+    "exactitud": 0.85,
+    "tamano_tflite_mb": 10.0
+  },
+  "cumpleMinimos": true,
+  "faltas": [],
+  "prueba": {
+    "casco": {
+      "umbral": 0.38,
+      "recortes": 2776,
+      "con_epp": 2170,
+      "sin_epp": 606,
+      "sensibilidad_falta": 0.8828382838283828,
+      "precision_falta": 0.9256055363321799,
+      "exactitud": 0.9589337175792507,
+      "auc": 0.9867469696278384,
+      "matriz": [
+        [
+          2127,
+          43
+        ],
+        [
+          71,
+          535
+        ]
+      ]
+    },
+    "chaleco": {
+      "umbral": 0.21,
+      "recortes": 297,
+      "con_epp": 191,
+      "sin_epp": 106,
+      "sensibilidad_falta": 0.9056603773584906,
+      "precision_falta": 0.9504950495049505,
+      "exactitud": 0.9494949494949495,
+      "auc": 0.9792057690407983,
+      "matriz": [
+        [
+          186,
+          5
+        ],
+        [
+          10,
+          96
+        ]
+      ]
+    }
+  },
+  "pruebaPorDataset": {
+    "gsnvb": {
+      "casco": {
+        "umbral": 0.38,
+        "recortes": 337,
+        "con_epp": 327,
+        "sin_epp": 10,
+        "sensibilidad_falta": 0.8,
+        "precision_falta": 1.0,
+        "exactitud": 0.9940652818991098,
+        "auc": 0.9954128440366973,
+        "matriz": [
+          [
+            327,
+            0
+          ],
+          [
+            2,
+            8
+          ]
+        ]
+      },
+      "chaleco": {
+        "umbral": 0.21,
+        "recortes": 297,
+        "con_epp": 191,
+        "sin_epp": 106,
+        "sensibilidad_falta": 0.9056603773584906,
+        "precision_falta": 0.9504950495049505,
+        "exactitud": 0.9494949494949495,
+        "auc": 0.9792057690407983,
+        "matriz": [
+          [
+            186,
+            5
+          ],
+          [
+            10,
+            96
+          ]
+        ]
+      }
+    },
+    "shel5k": {
+      "casco": {
+        "umbral": 0.38,
+        "recortes": 2439,
+        "con_epp": 1843,
+        "sin_epp": 596,
+        "sensibilidad_falta": 0.8842281879194631,
+        "precision_falta": 0.9245614035087719,
+        "exactitud": 0.9540795407954079,
+        "auc": 0.9853294890516264,
+        "matriz": [
+          [
+            1800,
+            43
+          ],
+          [
+            69,
+            527
+          ]
+        ]
+      }
+    }
+  },
+  "validacion": {
+    "casco": {
+      "umbral": 0.38,
+      "recortes": 2838,
+      "con_epp": 2232,
+      "sin_epp": 606,
+      "sensibilidad_falta": 0.8646864686468647,
+      "precision_falta": 0.9241622574955908,
+      "exactitud": 0.9559548978153629,
+      "auc": 0.9849740350379124,
+      "matriz": [
+        [
+          2189,
+          43
+        ],
+        [
+          82,
+          524
+        ]
+      ]
+    },
+    "chaleco": {
+      "umbral": 0.21,
+      "recortes": 326,
+      "con_epp": 208,
+      "sin_epp": 118,
+      "sensibilidad_falta": 0.8559322033898306,
+      "precision_falta": 0.9351851851851852,
+      "exactitud": 0.9263803680981595,
+      "auc": 0.9738836375488918,
+      "matriz": [
+        [
+          201,
+          7
+        ],
+        [
+          17,
+          101
+        ]
+      ]
+    }
+  },
+  "tamanosMb": {
+    "clasificador_epp.tflite": 1.865,
+    "efficientdet_lite0.tflite": 4.39
+  },
+  "diferenciaMaximaKerasTflite": 0.009966552257537842,
+  "entrenamiento": {
+    "epocasFase1": 10,
+    "tasaFase1": 0.001,
+    "tasaFase2": 0.0001,
+    "epocasFase2Maximas": 20,
+    "epocasCorridas": 16,
+    "capasDescongeladas": 60,
+    "segundos": 1383.8
+  },
+  "recortes": {
+    "semilla": 2026,
+    "fuentes": [
+      "gsnvb",
+      "shel5k"
+    ],
+    "imagenes": 6206,
+    "recortes": 18390,
+    "descartes": {
+      "persona_chica": 3683,
+      "sin_etiquetas": 767
+    },
+    "por_division": {
+      "entrenamiento": {
+        "imagenes": 4344,
+        "recortes": 12725,
+        "con_casco": 9904,
+        "sin_casco": 2737,
+        "casco_indeterminado": 84,
+        "con_chaleco": 911,
+        "sin_chaleco": 644,
+        "chaleco_indeterminado": 11170
+      },
+      "validacion": {
+        "imagenes": 931,
+        "recortes": 2857,
+        "con_casco": 2232,
+        "sin_casco": 606,
+        "casco_indeterminado": 19,
+        "con_chaleco": 208,
+        "sin_chaleco": 118,
+        "chaleco_indeterminado": 2531
+      },
+      "prueba": {
+        "imagenes": 931,
+        "recortes": 2808,
+        "con_casco": 2170,
+        "sin_casco": 606,
+        "casco_indeterminado": 32,
+        "con_chaleco": 191,
+        "sin_chaleco": 106,
+        "chaleco_indeterminado": 2511
+      }
+    },
+    "por_fuente": {
+      "gsnvb": {
+        "entrenamiento": {
+          "imagenes": 847,
+          "recortes": 1827,
+          "con_casco": 1655,
+          "sin_casco": 88,
+          "casco_indeterminado": 84,
+          "con_chaleco": 911,
+          "sin_chaleco": 644,
+          "chaleco_indeterminado": 272
+        },
+        "validacion": {
+          "imagenes": 189,
+          "recortes": 418,
+          "con_casco": 379,
+          "sin_casco": 20,
+          "casco_indeterminado": 19,
+          "con_chaleco": 208,
+          "sin_chaleco": 118,
+          "chaleco_indeterminado": 92
+        },
+        "prueba": {
+          "imagenes": 170,
+          "recortes": 369,
+          "con_casco": 327,
+          "sin_casco": 10,
+          "casco_indeterminado": 32,
+          "con_chaleco": 191,
+          "sin_chaleco": 106,
+          "chaleco_indeterminado": 72
+        }
+      },
+      "shel5k": {
+        "entrenamiento": {
+          "imagenes": 3497,
+          "recortes": 10898,
+          "con_casco": 8249,
+          "sin_casco": 2649,
+          "casco_indeterminado": 0,
+          "con_chaleco": 0,
+          "sin_chaleco": 0,
+          "chaleco_indeterminado": 10898
+        },
+        "validacion": {
+          "imagenes": 742,
+          "recortes": 2439,
+          "con_casco": 1853,
+          "sin_casco": 586,
+          "casco_indeterminado": 0,
+          "con_chaleco": 0,
+          "sin_chaleco": 0,
+          "chaleco_indeterminado": 2439
+        },
+        "prueba": {
+          "imagenes": 761,
+          "recortes": 2439,
+          "con_casco": 1843,
+          "sin_casco": 596,
+          "casco_indeterminado": 0,
+          "con_chaleco": 0,
+          "sin_chaleco": 0,
+          "chaleco_indeterminado": 2439
+        }
+      }
+    }
+  }
+}

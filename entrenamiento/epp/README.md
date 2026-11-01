@@ -177,3 +177,18 @@ Por dataset (mismos umbrales): casco en Construction Safety 0,800 / 1,000 / 0,99
 
 Lo que **no** se midió aquí: el tiempo en el celular (≤ 2 s con hasta 5 personas, criterio 16) y el conteo por foto completa con el detector de personas (error absoluto medio con fotos propias de obra). Se miden al integrar en la app. Las métricas son por recorte con cajas de persona anotadas a mano; en la app las cajas vienen del detector.
 
+## Exportación a TensorFlow Lite
+
+`model.export(salida/saved_model)` y `tf.lite.TFLiteConverter.from_saved_model` con `Optimize.DEFAULT` y `supported_types=[tf.float16]`. Decisión técnica: el modelo exportado tiene **una sola salida** `[1, 2]` = `[p_casco, p_chaleco]` (con dos salidas, el orden en TFLite no está garantizado); `epp.json` → `salidas` dice el orden.
+
+- Entrada `serving_default_imagen:0`: `[1, 224, 224, 3]` `float32`, RGB de 0 a 255 (la normalización está dentro del modelo). Salida `[1, 2]` `float32` (probabilidades de llevar casco y chaleco).
+- Equivalencia: diferencia máxima Keras/TFLite **0,0100** en 50 recortes de prueba, imagen por imagen (máximo 0,02). La comprueba el notebook y `tests/entrenamiento/epp/test_equivalencia_tflite.py`.
+- TensorFlow 2.21 marca `tf.lite.Interpreter` como obsoleto (pide `ai_edge_litert`), pero funciona; el convertidor `tf.lite.TFLiteConverter` no tiene aviso. Se usa el intérprete solo para la prueba de equivalencia.
+
+## Pruebas
+
+```powershell
+uv run pytest -q tests/entrenamiento                     # reglas de etiquetado y archivos versionados (sin TensorFlow)
+entrenamiento\epp\.venv\Scripts\python -m pytest -p no:cacheprovider --noconftest tests/entrenamiento -q   # + equivalencia con TensorFlow
+```
+
