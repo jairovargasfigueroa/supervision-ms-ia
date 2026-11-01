@@ -11,7 +11,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] `src/ia/agentes/dominio/reporte.py`: modelos Pydantic del reporte, generación del JSON Schema por agente y validación adicional (obras vistas, evidencias, índices)
 - [x] Ejecutor: descubrimiento en los cuatro servidores, pasos iniciales, bucle con `ModeloLenguaje.conversar` (lista permitida, esquema de argumentos, conjunto por agente, delimitación de resultados, `isError` como paso), límites de 8 llamadas y 3 minutos, reporte con `generar_json` y un reintento
 - [x] En `ia-worker`: toma de ejecuciones desde `ejecucion_agente` (`tomada_en`, una a la vez), programación diaria sin repetir y recuperación de ejecuciones `EN_CURSO` al iniciar
-- [ ] Filtros de visibilidad del residente con la utilidad de la 401 (`rpt_obra_resumen.residente_id`) y exclusión de `CONTROL_COBROS`
+- [x] Filtros de visibilidad del residente con la utilidad de la 401 (`rpt_obra_resumen.residente_id`) y exclusión de `CONTROL_COBROS`
 - [ ] Endpoints en `ia-api`: `GET /agentes`, `POST /agentes/{agente}/ejecuciones`, `GET /ejecuciones`, `GET /ejecuciones/{id}`, `GET /hallazgos`, `GET /sugerencias`, `POST /sugerencias/{id}/aprobar` y `/rechazar`, con roles y errores
 - [ ] Pruebas del diseño con `ModeloSimulado` y servidores MCP de prueba (incluido el mismo guion con los dos adaptadores simulados a nivel HTTP)
 - [ ] Prueba manual con el modelo real, con cada proveedor (Ollama y Anthropic), documentada en el README

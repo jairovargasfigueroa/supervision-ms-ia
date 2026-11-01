@@ -131,6 +131,7 @@ src/ia/
     aplicacion/puertos.py         RepositorioEjecuciones, RepositorioSugerencias, ConectorMcp, ObrasDelResidente
     aplicacion/ejecutor.py        EjecutorAgente: descubrimiento, pasos iniciales, bucle con conversar, límites, reporte
     aplicacion/trabajo.py         cola (una a la vez), programación diaria sin repetir, recuperación al iniciar
+    aplicacion/visibilidad.py     Alcance: agentes y obras que ve el usuario (residente: sus obras, sin CONTROL_COBROS)
     aplicacion/casos.py           ejecutar ahora, consultas con visibilidad, aprobar y rechazar
     infraestructura/repositorio_mongo.py  ia_db.ejecucion_agente e ia_db.sugerencia con sus índices
     infraestructura/conector_mcp.py       ClienteMcp por servidor con el token de ia-agentes (TokenAgentes)
