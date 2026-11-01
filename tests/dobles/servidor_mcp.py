@@ -104,6 +104,10 @@ class ServidorPrueba:
     def transporte(self) -> httpx2.AsyncBaseTransport:
         return httpx2.ASGITransport(app=self._asgi)
 
+    def herramienta(self, nombre: str) -> HerramientaPrueba:
+        """Para cambiar la respuesta o el error de una herramienta en una prueba."""
+        return self._mcp._herramientas[nombre]
+
     def herramientas_llamadas(self) -> list[str]:
         return [nombre for nombre, _ in self.llamadas]
 

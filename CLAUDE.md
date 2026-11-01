@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`) 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`) y 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
@@ -46,9 +46,18 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - Cada evento se aplica en **una transacción** que inserta `evento_aplicado` (inbox) y actualiza las `rpt_*`; cada escritura es idempotente por fila (`INSERT … ON CONFLICT`).
 - `PlanillaAprobada`, `PlanillaObservada` y la carga de cada obra bloquean antes la fila de la obra (`SELECT … FOR UPDATE`); el avance se recalcula desde `rpt_planilla`, nunca se suma.
 - El secreto de `ia-reportes` solo lo lee el comando de carga inicial (nunca `ia-api` ni `ia-worker`).
-- El secreto de `ia-agentes` (`IA_AGENTES_CLIENT_SECRET`) solo lo lee `ia-worker` (`ConfiguracionWorker`). `/mcp` acepta solo `agente_ia`; las rutas REST nunca lo aceptan.
+- El secreto de `ia-agentes` (`IA_AGENTES_CLIENT_SECRET`) solo lo lee `ia-worker` (`ConfiguracionWorker`). `/mcp` acepta solo `agente_ia` en un token del cliente `ia-agentes` (`azp`); las rutas REST nunca lo aceptan.
 - La capa 4 (`reportes`, `riesgo`, `atipicos`) no usa modelos de lenguaje. Desde la capa 5, el modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) se usa solo por el puerto `ModeloLenguaje` (`src/ia/lenguaje/`) y nunca escribe SQL: el constructor de reportes (503) valida su receta contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados, con el usuario de solo lectura `ia_reportes_lector`.
 - `IA_ANTHROPIC_API_KEY` es un secreto: solo en `.env` o en el gestor de secretos (vacía en `.env.example`).
+
+### IA segura (capa 5, 504)
+
+- El modelo nunca escribe SQL ni filtros de base de datos ni ejecuta acciones: entrega una receta (503) o un reporte con sugerencias de una lista (502) que el código valida; el SQL lo arma el código con nombres del catálogo y valores enlazados.
+- Todo dato externo que llega al modelo (pregunta, resultados de herramientas, datos de reportes) pasa por `como_dato` (`src/ia/seguridad/delimitar.py`: delimitado y con `<` y `>` escapados); todo mensaje de sistema lleva `REGLAS_COMUNES` (`mensaje_sistema`); todo texto del modelo que se guarda o se muestra pasa por `texto_seguro`.
+- Toda salida del modelo se valida con esquema estricto (Pydantic, `extra="forbid"`) y listas permitidas antes de usarse, con cualquier proveedor.
+- En la capa 5 (`agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/`, `seguridad/`) solo `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` tocan SQL, y solo `atipicos_mongo.py` arma filtros de MongoDB para el catálogo (lo comprueba `tests/seguridad/test_arquitectura.py`).
+- No se registran tokens, encabezados `Authorization`, la clave del modelo, el secreto de `ia-agentes` ni el texto completo de los mensajes.
+- Las pruebas con entradas maliciosas (`tests/seguridad/`, catálogo S1–S18, G1–G14, M1–M6, K1–K2) corren con `uv run pytest` como las demás y deben pasar completas.
 
 ## Documentación
 

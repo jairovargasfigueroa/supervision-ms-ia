@@ -88,7 +88,7 @@ class ModeloOllama:
         if opciones.temperatura is not None:
             opciones_ollama["temperature"] = opciones.temperatura
         inicio = time.monotonic()
-        resultado = "ok"
+        resultado = "error"  # cualquier fallo no previsto queda registrado como error
         respuesta: ChatResponse | None = None
         try:
             obtenida: ChatResponse = await asyncio.wait_for(
@@ -102,6 +102,7 @@ class ModeloOllama:
                 timeout=opciones.tiempo_maximo_s,
             )
             respuesta = obtenida
+            resultado = "ok"
             return obtenida
         except (TimeoutError, httpx.TimeoutException) as error:
             resultado = "tiempo_agotado"

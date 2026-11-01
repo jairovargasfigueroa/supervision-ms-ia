@@ -102,7 +102,7 @@ class ModeloAnthropic:
         if sistema:
             extra = {**extra, "system": sistema}
         inicio = time.monotonic()
-        resultado = "ok"
+        resultado = "error"  # cualquier fallo no previsto queda registrado como error
         respuesta: Message | None = None
         try:
             parametros: dict[str, Any] = {
@@ -119,6 +119,7 @@ class ModeloAnthropic:
                 mensajes_api.create(**parametros), timeout=opciones.tiempo_maximo_s
             )
             respuesta = obtenida
+            resultado = "ok"
             return obtenida
         except (TimeoutError, anthropic.APITimeoutError) as error:
             resultado = "tiempo_agotado"

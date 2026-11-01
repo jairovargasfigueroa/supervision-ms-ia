@@ -181,6 +181,13 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - Variables (`ConfiguracionWorker`): `IA_AGENTES_CRON` (por defecto `0 6 * * *`, La Paz) e `IA_AGENTES_PROGRAMADOS_ACTIVOS` (`true`/`false`). El modelo de lenguaje y el cliente MCP ya vienen de la 503 y la 501.
 - La visibilidad del residente sale de `rpt_obra_resumen.residente_id` (lectura de `atipicos/infraestructura/obras_sql.py`, 401/403); `agentes/` no tiene SQL.
 
+## IA segura (capa 5, 504)
+
+- `src/ia/seguridad/` es obligatorio en 502 y 503: `como_dato(etiqueta, objeto)` es la **única** forma de pasar datos externos al modelo (JSON, `<` y `>` escapados, recortado, dentro de la etiqueta); `texto_seguro(s, max)` limpia lo que escribió el modelo antes de guardarlo o mostrarlo; `mensaje_sistema(...)` agrega `REGLAS_COMUNES` a todo mensaje de sistema.
+- Cada llamada al modelo deja una línea en el registro desde el adaptador (`registrar_llamada`: proveedor, modelo, operación, `consultaId` o `ejecucionId`, duración, tokens si el proveedor los da y resultado) y otra desde el caso de uso con si la salida pasó la validación (`registrar_validacion`). Nunca el texto de los mensajes, la clave ni tokens.
+- Prueba de arquitectura (`tests/seguridad/test_arquitectura.py`): en `agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/` y `seguridad/` solo `constructor_sql.py` y `ejecutor_sql.py` (y `expresiones.py`, las expresiones constantes de Core que usa `constructor_sql.py`) importan SQLAlchemy; no hay `text()` salvo el `SET LOCAL statement_timeout` constante, ni *f-strings* ni concatenación que armen SQL; y solo `atipicos_mongo.py` (y los repositorios propios de `ia_db` de la capa 5, que no reciben filtros del modelo) usan MongoDB.
+- Catálogo de pruebas con entradas maliciosas en `tests/seguridad/` (S1–S18 reportes, G1–G14 agentes, M1–M6 servidor MCP de IA, K1–K2 secretos), con `ModeloSimulado`.
+
 ## Modelo de lenguaje (capa 5)
 
 - Solo `lenguaje/infraestructura/` importa `ollama` o `anthropic`; los casos de uso usan el puerto `ModeloLenguaje`. `reportes`, `riesgo` y `atipicos` (capa 4) no usan modelos de lenguaje.
