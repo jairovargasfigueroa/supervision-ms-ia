@@ -123,6 +123,21 @@ src/ia/
     infraestructura/consultas_mongo.py ia_db.consulta_reporte
     infraestructura/limite_mongo.py    ia_db.limite_consulta
     infraestructura/web.py             POST /consultas-reporte, GET /consultas-reporte, GET /catalogo-reportes
+  agentes/                        (502) tres agentes, host MCP; usa lenguaje/ (503) y mcp/cliente/ (501)
+    dominio/definiciones.py       los 3 agentes: misión, herramientas MCP, conjuntos de consultar_reporte, pasos
+                                  iniciales, tipos de hallazgo y acciones con su texto (código, no configuración)
+    dominio/reporte.py            ReporteAgente (Pydantic, extra="forbid"), JSON Schema por agente y validación adicional
+    dominio/ejecucion.py          estados y entidades: Ejecucion, Paso, HallazgoGuardado, Sugerencia
+    aplicacion/puertos.py         RepositorioEjecuciones, RepositorioSugerencias, ConectorMcp, ObrasDelResidente
+    aplicacion/ejecutor.py        EjecutorAgente: descubrimiento, pasos iniciales, bucle con conversar, límites, reporte
+    aplicacion/trabajo.py         cola (una a la vez), programación diaria sin repetir, recuperación al iniciar
+    aplicacion/visibilidad.py     Alcance: agentes y obras que ve el usuario (residente: sus obras, sin CONTROL_COBROS)
+    aplicacion/casos.py           ejecutar ahora, consultas con visibilidad, aprobar y rechazar
+    infraestructura/repositorio_mongo.py  ia_db.ejecucion_agente e ia_db.sugerencia con sus índices
+    infraestructura/conector_mcp.py       ClienteMcp por servidor con el token de ia-agentes (TokenAgentes)
+    infraestructura/worker.py             bucle de la cola (cada 2 s) y trabajo diario en el AsyncIOScheduler
+    infraestructura/web.py                GET /agentes, POST /agentes/{agente}/ejecuciones, /ejecuciones, /hallazgos,
+                                          /sugerencias y aprobar/rechazar
   mcp/                            (501) protocolo MCP: el servicio es servidor y host (cliente) de los agentes
     servidor/servidor.py          ServidorMcp (MCPServer del SDK): tools/list y tools/call con esquemas propios
                                   (Pydantic, extra="forbid"), errores como resultado ({codigo, mensaje}), registro por
@@ -159,6 +174,12 @@ tests/                            espejo de src/ia (y tests/ml); las de PostgreS
 - `MCPServer` siempre anuncia las capacidades de recursos y *prompts* (registra sus manejadores); aquí sus listas quedan **vacías** (no se publica ninguno) y no se atiende `subscriptions/listen`. Solo `POST`: otro método responde `405` (el SDK abriría un flujo SSE con `GET`). **(decisión técnica)**
 - `/mcp` acepta solo `agente_ia` (excepción a «solo `admin`, `gerente` y `residente`», que sigue valiendo para todas las rutas REST).
 - Las pruebas del cliente usan un servidor MCP de prueba hecho con el mismo SDK, servido por ASGI (`httpx2.ASGITransport`), sin red.
+
+## Agentes (capa 5, 502)
+
+- El modelo de lenguaje decide qué consultar y redacta; el código controla qué herramientas existen para cada agente, los límites (8 llamadas, 6 vueltas, 150 s de bucle y 3 min en total), el esquema del reporte, las acciones y qué obras son válidas.
+- Variables (`ConfiguracionWorker`): `IA_AGENTES_CRON` (por defecto `0 6 * * *`, La Paz) e `IA_AGENTES_PROGRAMADOS_ACTIVOS` (`true`/`false`). El modelo de lenguaje y el cliente MCP ya vienen de la 503 y la 501.
+- La visibilidad del residente sale de `rpt_obra_resumen.residente_id` (lectura de `atipicos/infraestructura/obras_sql.py`, 401/403); `agentes/` no tiene SQL.
 
 ## Modelo de lenguaje (capa 5)
 

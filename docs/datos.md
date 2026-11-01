@@ -188,6 +188,49 @@ Límite de 10 consultas de reporte por minuto por usuario (ventana fija de un mi
 
 Cada pedido hace `find_one_and_update(_id, {$inc: {cuenta: 1}, $setOnInsert: {…}}, upsert)`: atómico, sirve con varios procesos de `ia-api`. Con `cuenta > 10` → `429 DEMASIADAS_CONSULTAS` con `Retry-After`.
 
+### ejecucion_agente (502)
+
+Cada ejecución de un agente (programada o «Ejecutar ahora»). La crea `ia-api` (manual) o el programador de `ia-worker`; es también la cola: `ia-worker` toma la `EN_CURSO` más antigua sin `tomada_en` con `find_one_and_update`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string (uuid) | también es el `X-Request-Id` de las llamadas MCP |
+| agente | string | `SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS` |
+| origen | string | `PROGRAMADA`, `MANUAL` |
+| estado | string | `EN_CURSO`, `TERMINADA`, `FALLIDA` |
+| solicitada_por | string | `sub` de Keycloak; nulo si es programada |
+| iniciada_en | date | |
+| tomada_en | date | cuando `ia-worker` la empezó; nulo mientras espera |
+| terminada_en | date | nulo mientras está en curso |
+| proveedor_llm | string | `ollama` o `anthropic` (se llena al crearla, con `IA_LLM_PROVEEDOR`) |
+| modelo | string | `qwen3:8b`, `claude-sonnet-5-5`… (se llena al crearla, con `IA_LLM_MODELO`) |
+| resumen | string | del reporte; nulo hasta terminar |
+| error | `{ codigo, mensaje }` | solo si `FALLIDA`: `SIN_HERRAMIENTAS`, `REPORTE_INVALIDO`, `EJECUCION_TIEMPO_AGOTADO`, `INTERRUMPIDA`, `LLM_NO_DISPONIBLE` |
+| pasos | arreglo embebido | `{ numero, servidor, herramienta, argumentos, resultado_resumen, en, duracion_ms, error }` (`servidor`: `obras`, `materiales`, `finanzas` o `ia`; `argumentos` como texto JSON; `resultado_resumen`: primeros 500 caracteres del resultado y el número de filas) |
+| hallazgos | arreglo embebido | `{ obra_id, obra_nombre, tipo, severidad, situacion, causa_probable, evidencia[{herramienta, dato}] }` (`obra_nombre` lo pone el código desde los resultados de las herramientas) |
+
+Índices: `ix_ejecucion_agente_agente_iniciada` (`agente`, `iniciada_en` desc), `ix_ejecucion_agente_estado` (`estado`), `ix_ejecucion_agente_hallazgos_obra` (`hallazgos.obra_id`). Además `ux_ejecucion_agente_en_curso`, único y parcial (`agente`) con `estado = EN_CURSO`: dos «Ejecutar ahora» a la vez no crean dos ejecuciones en curso del mismo agente (el segundo recibe `409 EJECUCION_EN_CURSO`). **(decisión técnica)**
+
+### sugerencia (502)
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string (uuid) | |
+| ejecucion_id | string | ref `ejecucion_agente` |
+| agente | string | copia, para filtrar |
+| obra_id | string | ref Obras |
+| obra_nombre | string | copia del resultado de la herramienta |
+| accion | string | de la lista permitida del agente |
+| descripcion | string | |
+| hallazgo_indice | int | posición del hallazgo en la ejecución |
+| estado | string | `PENDIENTE`, `APROBADA`, `RECHAZADA` |
+| creada_en | date | |
+| decidida_por | string | `sub` de Keycloak; nulo mientras está pendiente |
+| decidida_en | date | |
+| comentario | string | comentario al aprobar o motivo al rechazar |
+
+Índices: `ix_sugerencia_estado_agente` (`estado`, `agente`), `ix_sugerencia_obra_estado` (`obra_id`, `estado`) y `ux_sugerencia_pendiente_obra_accion`, único y parcial (`obra_id`, `accion`) con `estado = PENDIENTE` (no se repite una sugerencia pendiente aun con dos ejecuciones seguidas). Aprobar o rechazar es `update_one({_id, estado: "PENDIENTE"}, …)`: si no actualiza nada, `409 SUGERENCIA_YA_DECIDIDA`.
+
 ## Usuario de solo lectura de `reportes_db` (503)
 
 Rol `ia_reportes_lector` (`LOGIN`, `default_transaction_read_only = on`; lo crea el script de inicio de PostgreSQL de `infra`, contraseña en `.env`) con `SELECT` **solo** en `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla` (no en `evento_aplicado` ni `carga_inicial`). Los `GRANT` van en la migración `0002_lector_reportes` de este servicio (si el rol no existe, la migración falla: hay que crearlo antes). Lo usa el constructor de reportes (`IA_REPORTES_DB_URL_LECTURA`), con transacción `READ ONLY` y `statement_timeout` de 5 s.

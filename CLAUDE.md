@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`) y 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`) 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`) y 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
