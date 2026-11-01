@@ -127,6 +127,52 @@ Errores: 401 · 403
 
 - Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles (también `agente_ia`) reciben `403 SIN_PERMISO` en todas las rutas REST. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido). **Excepción:** `/mcp` acepta **solo** `agente_ia` (501).
 
+### Agentes (502)
+
+Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`) que corren en `ia-worker` a las 06:00 (La Paz) y a pedido. JSON en `camelCase`. Para `residente`: solo sus obras (`rpt_obra_resumen.residente_id`) y nunca `CONTROL_COBROS`. Detalle: `docs/specs/502-agentes-erp/diseno.md` de la carpeta general.
+
+```
+### GET /agentes · 502
+Roles: admin, gerente, residente
+Devuelve: 200 [{ "agente", "nombre", "mision", "herramientas": [..], "ultimaEjecucion": EjecucionCorta | null, "sugerenciasPendientes": 2 }]
+Para residente no aparece CONTROL_COBROS y sugerenciasPendientes cuenta solo sus obras.
+
+### POST /agentes/{agente}/ejecuciones · 502
+Roles: admin, gerente · Sin cuerpo
+Devuelve: 202 EjecucionCorta { "id", "agente", "origen": "MANUAL", "estado": "EN_CURSO", "iniciadaEn", "terminadaEn": null, "cantidadHallazgos": 0 }
+Errores: 400 AGENTE_INVALIDO · 409 EJECUCION_EN_CURSO · 401 · 403
+
+### GET /ejecuciones?agente=&estado=&limite= · 502
+Roles: admin, gerente · limite 1 a 50 (20) · Devuelve: 200 [EjecucionCorta] (más recientes primero)
+Errores: 400 DATOS_INVALIDOS (agente, estado o limite) · 401 · 403
+
+### GET /ejecuciones/{id} · 502
+Roles: admin, gerente
+Devuelve: 200 { "id", "agente", "origen", "estado", "solicitadaPor", "iniciadaEn", "terminadaEn", "proveedorLlm", "modelo", "resumen", "error": {codigo, mensaje} | null,
+  "pasos": [{ "numero", "servidor", "herramienta", "argumentos" (texto JSON), "resultadoResumen", "en", "duracionMs", "error" }],
+  "hallazgos": [{ "obraId", "obraNombre", "tipo", "severidad", "situacion", "causaProbable", "evidencia": [{ "herramienta", "dato" }] }] }
+Errores: 404 EJECUCION_NO_ENCONTRADA · 401 · 403
+
+### GET /hallazgos?agente=&obraId= · 502
+Roles: admin, gerente, residente (sus obras; sin CONTROL_COBROS)
+Hallazgos vigentes (los de la última ejecución TERMINADA de cada agente), cada uno con además "ejecucionId", "agente" y "detectadoEn" (= terminadaEn).
+Errores: 400 DATOS_INVALIDOS (agente) · 401 · 403
+
+### GET /sugerencias?estado=&agente=&obraId=&limite= · 502
+Roles: admin, gerente, residente (sus obras; sin CONTROL_COBROS) · limite 1 a 100 (50) · más recientes primero
+Devuelve: 200 [{ "id", "ejecucionId", "agente", "obraId", "obraNombre", "accion", "accionTexto", "descripcion", "estado", "creadaEn", "decididaPor", "decididaEn", "comentario" }]
+Errores: 400 DATOS_INVALIDOS · 401 · 403
+
+### POST /sugerencias/{id}/aprobar · 502
+Roles: admin, gerente, residente (sus obras; sin CONTROL_COBROS) · Recibe { "comentario": "opcional, hasta 300" }
+Devuelve: 200 la sugerencia (APROBADA, decididaPor = sub, decididaEn). Solo registra la decisión: no llama a otros servicios ni publica eventos.
+Errores: 404 SUGERENCIA_NO_ENCONTRADA (también si no puede verla) · 409 SUGERENCIA_YA_DECIDIDA · 422 COMENTARIO_INVALIDO (errores[] con campo = comentario) · 401 · 403
+
+### POST /sugerencias/{id}/rechazar · 502
+Mismos roles · Recibe { "motivo": "10 a 500 caracteres" } · Devuelve: 200 (RECHAZADA; el motivo queda en comentario)
+Errores: 404 SUGERENCIA_NO_ENCONTRADA · 409 SUGERENCIA_YA_DECIDIDA · 422 MOTIVO_INVALIDO (errores[] con campo = motivo) · 401 · 403
+```
+
 ## Herramientas MCP (capa 5, solo lectura) · 501
 
 ```
@@ -206,5 +252,7 @@ El proceso `ia-worker` es el único cliente MCP. Token del cliente confidencial 
 | Materiales (`IA_MATERIALES_MCP_URL`, por defecto `http://localhost:8082/mcp`) | `stock_obra {obraId?, estados?, limite?}`, `consumos_partida {obraId, periodo, partidaId?}` |
 | Finanzas (`IA_FINANZAS_MCP_URL`, por defecto `http://localhost:8083/mcp`) | `cobros_por_vencer {dias?, incluirVencidos?, obraId?}` |
 | IA (`IA_PROPIO_MCP_URL`, por defecto `http://localhost:8085/mcp`; en Compose `http://ia-api:8085/mcp`) | `consultar_reporte`, `riesgo_retraso`, `consumos_atipicos` (las de arriba) |
+
+Los agentes de la 502 las usan con mínimo privilegio: cada agente solo ve sus herramientas y, en `consultar_reporte`, sus conjuntos (Seguimiento de obras: `OBRAS`, `PLANILLAS`; Control de materiales: `CONSUMO_MATERIAL`, `MOVIMIENTOS`; Control de cobros: `COBROS`, `PLANILLAS`). La visibilidad del residente sale de `rpt_obra_resumen.residente_id` (401); no se llama a Obras.
 
 Esquemas y salidas de cada herramienta: `docs/specs/501-servidores-mcp/diseno.md` de la carpeta general.

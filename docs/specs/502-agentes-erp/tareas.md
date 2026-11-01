@@ -4,7 +4,7 @@ Requisitos y diseño: `docs/specs/502-agentes-erp/` de `supervision-docs` (carpe
 
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
-- [ ] Aplicar «Cambios a contratos y datos» del diseño en los documentos de este proyecto (`docs/contratos.md`, `docs/datos.md`, `docs/estructura.md`)
+- [x] Aplicar «Cambios a contratos y datos» del diseño en los documentos de este proyecto (`docs/contratos.md`, `docs/datos.md`, `docs/estructura.md`)
 - [ ] Variables `IA_AGENTES_CRON` e `IA_AGENTES_PROGRAMADOS_ACTIVOS` en `config.py` y `.env.example` (el modelo de lenguaje y el cliente MCP ya vienen de la 503 y la 501)
 - [ ] Repositorios de `ejecucion_agente` (con `proveedor_llm`, `modelo` y pasos con `servidor`) y `sugerencia` en `ia_db` con sus índices (incluido el único parcial de sugerencias pendientes)
 - [ ] `src/ia/agentes/dominio/definiciones.py`: los tres agentes (misión, herramientas MCP por servidor, conjuntos permitidos en `consultar_reporte`, pasos iniciales, tipos de hallazgo, acciones con su texto)
