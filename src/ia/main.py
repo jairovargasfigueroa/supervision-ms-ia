@@ -16,7 +16,7 @@ from ia.comun.bucle import ejecutar_async
 from ia.comun.http import instalar_http
 from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
-from ia.config import Configuracion
+from ia.config import Configuracion, ConfiguracionInvalida
 from ia.reportes.infraestructura.web import router as rutas_reportes
 from ia.riesgo.aplicacion.puertos import ModeloRiesgo
 from ia.riesgo.infraestructura.modelo_xgboost import cargar_modelo
@@ -82,6 +82,11 @@ def crear_app(
 def ejecutar() -> None:
     config = Configuracion()
     configurar_registros(json_=config.registros_json)
+    try:
+        config.comprobar_llm()
+    except ConfiguracionInvalida as error:
+        registro.error("ia-api no arranca: %s", error)
+        raise SystemExit(1) from error
     servidor = uvicorn.Server(uvicorn.Config(crear_app(config), host="0.0.0.0", port=config.puerto, log_config=None))
     registro.info("ia-api en el puerto %s", config.puerto)
     ejecutar_async(servidor.serve())

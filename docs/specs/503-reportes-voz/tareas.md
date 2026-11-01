@@ -5,7 +5,7 @@ Requisitos y diseño: `docs/specs/503-reportes-voz/` de `supervision-docs` (carp
 Marca cada tarea al terminarla (con sus pruebas y su commit).
 
 - [x] Aplicar «Cambios a contratos y datos» del diseño en los documentos de este proyecto (`docs/contratos.md`, `docs/datos.md`, `docs/estructura.md`, `CLAUDE.md`)
-- [ ] Agregar `ollama` 0.6 y `anthropic` 2; variables `IA_LLM_PROVEEDOR`, `IA_LLM_MODELO`, `IA_OLLAMA_URL`, `IA_ANTHROPIC_API_KEY` e `IA_REPORTES_DB_URL_LECTURA` en `config.py` y `.env.example` (la clave vacía; el servicio no arranca con un proveedor desconocido o con `anthropic` sin clave)
+- [x] Agregar `ollama` 0.6 y `anthropic` 2; variables `IA_LLM_PROVEEDOR`, `IA_LLM_MODELO`, `IA_OLLAMA_URL`, `IA_ANTHROPIC_API_KEY` e `IA_REPORTES_DB_URL_LECTURA` en `config.py` y `.env.example` (la clave vacía; el servicio no arranca con un proveedor desconocido o con `anthropic` sin clave)
 - [ ] Módulo `src/ia/lenguaje/`: puerto `ModeloLenguaje` (`conversar` y `generar_json`), errores, `adaptar_esquema` por proveedor, adaptadores `ModeloOllama` y `ModeloAnthropic`, `crear_modelo_lenguaje`; `ModeloSimulado` en `tests/dobles/`; pruebas de los adaptadores con transporte HTTP simulado
 - [ ] Migración de Alembic con los `GRANT SELECT` de `ia_reportes_lector` sobre `rpt_obra_resumen`, `rpt_consumo_material`, `rpt_movimiento`, `rpt_cobro` y `rpt_planilla`
 - [ ] `constructor_reportes/dominio/`: catálogo de los 6 conjuntos (modos `REST` y `MCP`), `RecetaReporte`, `validar_receta` (en orden, con `errores[]`), atajos y resultado (plantilla del resumen)
