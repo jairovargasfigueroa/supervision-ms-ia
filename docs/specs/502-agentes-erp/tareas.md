@@ -13,5 +13,5 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] En `ia-worker`: toma de ejecuciones desde `ejecucion_agente` (`tomada_en`, una a la vez), programación diaria sin repetir y recuperación de ejecuciones `EN_CURSO` al iniciar
 - [x] Filtros de visibilidad del residente con la utilidad de la 401 (`rpt_obra_resumen.residente_id`) y exclusión de `CONTROL_COBROS`
 - [x] Endpoints en `ia-api`: `GET /agentes`, `POST /agentes/{agente}/ejecuciones`, `GET /ejecuciones`, `GET /ejecuciones/{id}`, `GET /hallazgos`, `GET /sugerencias`, `POST /sugerencias/{id}/aprobar` y `/rechazar`, con roles y errores
-- [ ] Pruebas del diseño con `ModeloSimulado` y servidores MCP de prueba (incluido el mismo guion con los dos adaptadores simulados a nivel HTTP)
+- [x] Pruebas del diseño con `ModeloSimulado` y servidores MCP de prueba (incluido el mismo guion con los dos adaptadores simulados a nivel HTTP)
 - [ ] Prueba manual con el modelo real, con cada proveedor (Ollama y Anthropic), documentada en el README
