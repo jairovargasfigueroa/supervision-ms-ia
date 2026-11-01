@@ -1,6 +1,6 @@
 # Clasificador de casco y chaleco (301)
 
-Entrenamiento del modelo de *deep learning* de la plataforma (punto 12): un clasificador **MobileNetV3-Small** con ajuste fino (TensorFlow / Keras) que, para cada persona que detecta el celular, da la probabilidad de que lleve **casco** y **chaleco**. Corre en la app de obra como TensorFlow Lite, después del detector de personas EfficientDet-Lite0 (preentrenado, no se reentrena). Versión entregada: **`epp-1.0.0`**. Requisitos y diseño: `docs/specs/301-deteccion-epp/` de `supervision-docs`.
+Entrenamiento del modelo de *deep learning* de la plataforma (punto 12): un clasificador **MobileNetV3-Small** con ajuste fino (TensorFlow / Keras) que, para cada persona que detecta el celular, da la probabilidad de que lleve **casco** y **chaleco**. Corre en la app de obra como TensorFlow Lite, después del detector de personas EfficientDet-Lite0 (preentrenado, no se reentrena). Versión entregada: **`epp-1.0.0`** (ver al final). Requisitos y diseño: `docs/specs/301-deteccion-epp/` de `supervision-docs`.
 
 ## Datasets
 
@@ -192,3 +192,16 @@ uv run pytest -q tests/entrenamiento                     # reglas de etiquetado 
 entrenamiento\epp\.venv\Scripts\python -m pytest -p no:cacheprovider --noconftest tests/entrenamiento -q   # + equivalencia con TensorFlow
 ```
 
+## Versión entregada a la app
+
+**`epp-1.0.0`** (01/11/2026), copiada a `mobile/app-obra/assets/modelos/`:
+
+| Archivo | Tamaño | SHA-256 | Origen |
+|---|---|---|---|
+| `clasificador_epp.tflite` | 1 955 712 bytes (1,87 MB) | `0cf56a0d…72922c9a2` | `salida/` (este entrenamiento) |
+| `epp.json` | 322 bytes | `b34d8582…5e153dd1e2` | `salida/`: versión, entrada, orden de salidas y umbrales (casco 0,38; chaleco 0,21) |
+| `efficientdet_lite0.tflite` | 4 602 795 bytes (4,39 MB) | `0720bf24…60c723bb` | MediaPipe, variante int8: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite` (URL del diseño); no se versiona aquí, se baja a `datos/` |
+
+Para entregar una versión nueva: subir `VERSION` en `clasificador.py`, ejecutar el notebook (que debe terminar sin error), copiar los tres archivos a `mobile/app-obra/assets/modelos/` y anotar aquí la versión.
+
+**Aviso para la app (detector de personas):** el `efficientdet_lite0.tflite` int8 de MediaPipe **no** trae el posproceso NMS dentro del modelo, a diferencia de lo que dice el diseño: su entrada es `[1, 320, 320, 3]` `uint8` y sus salidas son crudas, `[1, 19206, 4]` (cajas sin decodificar, relativas a los *anchors*) y `[1, 19206, 90]` (puntajes por clase); MediaPipe hace la decodificación y el NMS fuera del modelo. El modelo de la *Task Library* de TensorFlow Lite (`https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/android/lite-model_efficientdet_lite0_detection_metadata_1.tflite`, 4 563 519 bytes, SHA-256 `2e04c53b…c4fc4e0b`, misma entrada `uint8` 320 × 320) sí lo incluye: salidas `[1, 25, 4]` (cajas), `[1, 25]` (clases), `[1, 25]` (puntajes) y `[1]` (cantidad). Cuál usar lo decide quien integra la app (y se corrige el diseño si cambia).
