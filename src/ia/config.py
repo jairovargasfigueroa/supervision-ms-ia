@@ -103,3 +103,7 @@ class ConfiguracionWorker(Configuracion):
     materiales_mcp_url: str = "http://localhost:8082/mcp"
     finanzas_mcp_url: str = "http://localhost:8083/mcp"
     propio_mcp_url: str = "http://localhost:8085/mcp"
+
+    # 502: ejecución diaria de los tres agentes (cron de 5 campos en la zona del negocio) y si está encendida.
+    agentes_cron: str = "0 6 * * *"
+    agentes_programados_activos: bool = True

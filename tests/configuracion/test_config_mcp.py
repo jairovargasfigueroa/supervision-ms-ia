@@ -28,3 +28,11 @@ def test_el_secreto_no_aparece_al_mostrar_la_configuracion() -> None:
     worker = ConfiguracionWorker(agentes_client_secret=SecretStr("secreto-de-prueba"))
     assert "secreto-de-prueba" not in repr(worker)
     assert "secreto-de-prueba" not in str(worker.model_dump())
+
+
+def test_programacion_de_los_agentes() -> None:
+    worker = ConfiguracionWorker()
+    assert (worker.agentes_cron, worker.agentes_programados_activos) == ("0 6 * * *", True)
+    apagado = ConfiguracionWorker(agentes_programados_activos="false", agentes_cron="30 7 * * *")  # type: ignore[arg-type]
+    assert (apagado.agentes_cron, apagado.agentes_programados_activos) == ("30 7 * * *", False)
+    assert not hasattr(Configuracion(), "agentes_cron")
