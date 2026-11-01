@@ -96,6 +96,7 @@ Decisiones técnicas de la implementación:
 - El límite de 8 llamadas cuenta **cada pedido** de herramienta (también los rechazados por no permitidos o por argumentos): así un modelo que insiste en pedir lo prohibido no alarga la ejecución. Los pedidos que pasan el límite no se ejecutan ni se guardan como paso; vuelven al modelo con `LIMITE_ALCANZADO` (Anthropic exige una respuesta por cada `tool_use`).
 - Un servidor que no responde a `tools/list` queda como paso con `herramienta = "tools/list"` y error `SERVIDOR_NO_DISPONIBLE: …` (no cuenta para el límite); el resumen termina con «(Sin respuesta de: …)».
 - Códigos de `FALLIDA` además de los del diseño: `LLM_NO_DISPONIBLE` (el modelo no respondió al pedir el reporte) y `ERROR_INTERNO` (error inesperado).
+- El reporte final (`generar_json`) se pide **sin herramientas**: los pedidos del modelo y los resultados del bucle pasan a texto («Pedí la herramienta…», «Resultado de…:» seguido del dato delimitado por `como_dato`). La Messages API de Anthropic rechaza bloques `tool_use`/`tool_result` sin `tools`, y así el reporte funciona igual con los dos proveedores.
 - Si una obra salió en los datos sin nombre (por ejemplo, solo en `cobros_por_vencer`), `obra_nombre` es «Obra sin nombre en los datos».
 
 ## Autenticación y visibilidad

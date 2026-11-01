@@ -21,6 +21,7 @@ from agentes.apoyo_agentes import (
     servidores_de_prueba,
 )
 from apoyo import reportes_503 as d
+from dobles.anthropic_simulado import rechazo_como_la_api
 from dobles.modelo_simulado import ModeloSimulado, llamada
 from ia.agentes.aplicacion.ejecutor import EjecutorAgente
 from ia.agentes.dominio.ejecucion import FALLIDA, PENDIENTE, TERMINADA
@@ -97,7 +98,8 @@ async def test_limite_de_8_llamadas(ia_db: AsyncDatabase[dict[str, Any]]) -> Non
     assert len(ejecucion.pasos) == 8
     assert len(llamadas) == 8
     assert len(modelo.llamadas_de("conversar")) == 1  # con el límite alcanzado pasa al reporte
-    resultados = [m for m in modelo.llamadas_de("generar_json")[0].mensajes if m.nombre_herramienta == "buscar_diario"]
+    reporte = modelo.llamadas_de("generar_json")[0].mensajes
+    resultados = [m for m in reporte if m.contenido.startswith("Resultado de buscar_diario")]
     assert len(resultados) == 20  # cada pedido tiene su respuesta (las que pasan el límite, con LIMITE_ALCANZADO)
     assert sum("LIMITE_ALCANZADO" in m.contenido for m in resultados) == 15
 
@@ -115,10 +117,16 @@ async def test_resultado_con_is_error_queda_como_paso_y_vuelve_al_modelo(ia_db: 
         ejecucion = await e.correr("SEGUIMIENTO_OBRAS")
     assert ejecucion.estado == TERMINADA, ejecucion.error
     assert _errores(ejecucion)[3] == ("buscar_diario", "OBRA_NO_ENCONTRADA")
-    resultado = next(
-        m for m in modelo.llamadas_de("generar_json")[0].mensajes if m.nombre_herramienta == "buscar_diario"
+    en_el_bucle = next(
+        m for m in modelo.llamadas_de("conversar")[1].mensajes if m.nombre_herramienta == "buscar_diario"
     )
-    assert resultado.es_error
+    assert en_el_bucle.es_error
+    assert "OBRA_NO_ENCONTRADA" in en_el_bucle.contenido
+    resultado = next(
+        m
+        for m in modelo.llamadas_de("generar_json")[0].mensajes
+        if m.contenido.startswith("Resultado de buscar_diario (error):")
+    )
     assert "OBRA_NO_ENCONTRADA" in resultado.contenido
 
 
@@ -214,7 +222,9 @@ def _anthropic() -> ModeloAnthropic:
         ([{"type": "text", "text": json.dumps(GUION_REPORTE)}], "end_turn"),
     ]  # fmt: skip
 
-    def manejar(_: httpx2.Request) -> httpx2.Response:
+    def manejar(pedido: httpx2.Request) -> httpx2.Response:
+        if (rechazo := rechazo_como_la_api(pedido)) is not None:
+            return rechazo
         bloques, fin = respuestas.pop(0)
         cuerpo = {
             "id": "msg_1",

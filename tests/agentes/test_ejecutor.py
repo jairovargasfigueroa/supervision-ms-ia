@@ -66,9 +66,16 @@ async def test_camino_feliz_seguimiento_de_obras(ia_db: AsyncDatabase[dict[str, 
     assert "Hoy es 2027-04-20" in sistema
     assert "2027-04" in sistema
     assert "SOLICITAR_INFORME_RESIDENTE" in sistema
-    diario = next(m for m in modelo.llamadas_de("generar_json")[0].mensajes if m.rol is Rol.HERRAMIENTA)
+    # En el bucle, el resultado vuelve como bloque de herramienta, delimitado.
+    en_el_bucle = next(m for m in modelo.llamadas_de("conversar")[1].mensajes if m.rol is Rol.HERRAMIENTA)
+    assert en_el_bucle.contenido.startswith('<datos_herramienta nombre="buscar_diario">')
+    # Para el reporte (sin herramientas) los pedidos y resultados pasan a texto, con los datos igual de delimitados.
+    reporte = modelo.llamadas_de("generar_json")[0].mensajes
+    assert all(not m.llamadas and m.rol is not Rol.HERRAMIENTA for m in reporte)
+    diario = next(m for m in reporte if m.contenido.startswith("Resultado de buscar_diario:"))
     assert TEXTO_DIARIO in diario.contenido
-    assert diario.contenido.startswith('<datos_herramienta nombre="buscar_diario">')
+    assert '\n<datos_herramienta nombre="buscar_diario">' in diario.contenido
+    assert any("Pedí la herramienta buscar_diario con" in m.contenido for m in reporte if m.rol is Rol.ASISTENTE)
     assert modelo.llamadas_de("generar_json")[0].opciones.contexto == ejecucion.id
 
 

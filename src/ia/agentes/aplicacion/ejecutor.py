@@ -337,8 +337,10 @@ class EjecutorAgente:
 
     async def _reporte(self, estado: _Estado, mensajes: list[Mensaje], opciones: Opciones) -> ReporteValidado | None:
         esquema = esquema_reporte(estado.agente)
+        # El reporte se pide sin herramientas: los pedidos y resultados del bucle pasan a texto (la Messages API
+        # rechaza bloques tool_use/tool_result sin `tools`). Los resultados siguen delimitados por `como_dato`.
         conversacion = [
-            *mensajes,
+            *_sin_herramientas(mensajes),
             Mensaje.usuario(
                 "Escribe el reporte final. Cada obraId debe ser una obra que salió en los datos de las herramientas; "
                 "cada evidencia cita una herramienta que llamaste con éxito y el dato; cada sugerencia usa una acción "
@@ -365,6 +367,27 @@ class EjecutorAgente:
             registrar_validacion(contexto=estado.ejecucion.id, operacion="reporte_agente", valida=True)
             return reporte
         return None
+
+
+def _sin_herramientas(mensajes: list[Mensaje]) -> list[Mensaje]:
+    """La conversación con los pedidos de herramientas y sus resultados como texto (sin bloques de herramientas ni los
+    bloques crudos del proveedor). El contenido de cada resultado ya viene delimitado y escapado (`como_dato`)."""
+    salida: list[Mensaje] = []
+    for m in mensajes:
+        if m.rol is Rol.ASISTENTE and m.llamadas:
+            pedidos = [
+                f"Pedí la herramienta {c.nombre[:60]} con "
+                + json.dumps(c.argumentos, ensure_ascii=False, default=str)[:500]
+                for c in m.llamadas
+            ]
+            salida.append(Mensaje(Rol.ASISTENTE, "\n".join([m.contenido, *pedidos]).strip()))
+        elif m.rol is Rol.HERRAMIENTA:
+            nombre = (m.nombre_herramienta or "herramienta")[:60]
+            error = " (error)" if m.es_error else ""
+            salida.append(Mensaje.usuario(f"Resultado de {nombre}{error}:\n{m.contenido}"))
+        else:
+            salida.append(m)
+    return salida
 
 
 def _recoger_obras(datos: Any, obras: dict[str, str | None]) -> None:
