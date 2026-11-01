@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from ia.agentes.infraestructura.web import router as rutas_agentes
 from ia.atipicos.infraestructura.web import router as rutas_atipicos
 from ia.auth.dependencias import autenticar_token
 from ia.auth.token import ProveedorJwks, ValidadorToken
@@ -97,6 +98,7 @@ def crear_app(
     app.include_router(rutas_riesgo)
     app.include_router(rutas_atipicos)
     app.include_router(rutas_constructor)
+    app.include_router(rutas_agentes)
     # 501: servidor MCP de IA en POST /mcp (solo agente_ia).
     servidor_mcp = ServidorMcp(herramientas_ia(app.state))
     app.state.servidor_mcp = servidor_mcp
