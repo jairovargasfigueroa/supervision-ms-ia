@@ -376,3 +376,35 @@ def tipo_metrica(conjunto: ConjuntoCatalogo, funcion: str, campo: str | None) ->
         return NUMERO
     origen = conjunto.campo(campo)
     return origen.tipo if origen else NUMERO
+
+
+def describir_catalogo(modo: str) -> str:
+    """El catálogo en forma compacta para el mensaje de sistema (título, descripción, columnas con su tipo, filtros con
+    operadores y valores, dimensiones, medidas y ejemplos)."""
+    lineas: list[str] = []
+    for conjunto in CATALOGO.values():
+        lineas.append(f"## {conjunto.conjunto} · «{conjunto.titulo}»: {conjunto.descripcion}")
+        columnas = ", ".join(f"{c.clave} ({c.tipo})" for c in conjunto.columnas)
+        if columnas:
+            lineas.append(f"- columnas: {columnas}")
+        filtros = []
+        for f in conjunto.filtros_del_modo(modo):
+            valores = {
+                V_TEXTO: "texto de 2 a 100",
+                V_UUID: "uuid",
+                V_ID: "id de material",
+                V_ENUM: " | ".join(f.opciones),
+                V_PERIODO: "AAAA-MM",
+                V_FECHA: "AAAA-MM-DD",
+                V_ENTERO: f"entero de {f.minimo} a {f.maximo}",
+                V_VERDADERO: "true",
+            }[f.valor]
+            filtros.append(f"{f.clave} [{'/'.join(sorted(f.operadores))}: {valores}]")
+        lineas.append(f"- filtros: {'; '.join(filtros)}")
+        lineas.append(f"- agruparPor (dimensiones): {', '.join(conjunto.dimensiones)}")
+        medidas = [f"{c.clave} ({'/'.join(sorted(c.funciones))})" for c in conjunto.campos if c.funciones]
+        lineas.append(f"- métricas: CONTEO (sin campo); {', '.join(medidas)}")
+        if conjunto.solo_agrupado:
+            lineas.append(f"- siempre agrupado (por defecto {', '.join(conjunto.agrupar_defecto)})")
+        lineas.append(f"- ejemplos: {' | '.join(conjunto.ejemplos)}")
+    return "\n".join(lineas)

@@ -11,7 +11,7 @@ Marca cada tarea al terminarla (con sus pruebas y su commit).
 - [x] `constructor_reportes/dominio/`: catálogo de los 6 conjuntos (modos `REST` y `MCP`), `RecetaReporte`, `validar_receta` (en orden, con `errores[]`), atajos y resultado (plantilla del resumen)
 - [x] Motor: `expresiones.py` y `constructor_sql.py` (SQLAlchemy Core, solo valores enlazados, escape de `ILIKE`, `limite + 1`), `ejecutor_sql.py` (lector, `READ ONLY`, 5 s) y `atipicos_mongo.py` (filtro y agregación con constantes, 5 s); conversión de filas a texto
 - [x] Nombres: catálogo de Materiales con el token del usuario (caché de 5 min) y directorio de clientes del cuerpo; avisos y `503 SERVICIO_NO_DISPONIBLE` cuando falta lo necesario para un filtro
-- [ ] `InterpretarPedido` (catálogo compacto, `<pregunta_usuario>`, 20 s) y resumen (datos con `como_dato`, 25 s, plantilla de respaldo)
+- [x] `InterpretarPedido` (catálogo compacto, `<pregunta_usuario>`, 20 s) y resumen (datos con `como_dato`, 25 s, plantilla de respaldo)
 - [ ] Repositorios de `consulta_reporte` y `limite_consulta` (TTL y `$inc` atómico) en `ia_db`
 - [ ] Endpoints `POST /consultas-reporte`, `GET /consultas-reporte`, `GET /catalogo-reportes` (solo `admin` y `gerente`) con sus errores
 - [ ] Pruebas del diseño con `ModeloSimulado`, PostgreSQL con las migraciones de la 401 y MongoDB reales (incluidos los permisos de `ia_reportes_lector`)
