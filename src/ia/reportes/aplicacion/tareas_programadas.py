@@ -16,7 +16,8 @@ class TareasProgramadas:
         self._reloj = reloj
 
     async def vencer_cobros(self) -> int:
-        """00:20 · cobros `PENDIENTE` con `vence_en` anterior a hoy → `VENCIDO` (criterio 9). Devuelve cuántos."""
+        """00:20 · cobros `PENDIENTE` con `vence_en` anterior a hoy → `VENCIDO` (criterio 9); los `PAGADO` no se
+        tocan (201). Devuelve cuántos."""
         hoy = self._reloj.hoy()
         async with self._base.transaccion() as repo:
             pendientes = await repo.cobros_pendientes()

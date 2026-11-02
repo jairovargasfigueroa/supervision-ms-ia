@@ -32,10 +32,9 @@ from ia.reportes.dominio.valores import (
     CARGA_FALLIDA,
     CARGA_TERMINADA,
     EN_EJECUCION,
+    ESTADOS_COBRO,
     ESTADOS_PLANILLA_ABIERTA,
     OBSERVADA,
-    PENDIENTE,
-    VENCIDO,
 )
 
 registro = logging.getLogger("ia.reportes.carga_inicial")
@@ -158,7 +157,8 @@ class CargaInicial:
                 registro.warning(advertencia)
                 resultado.advertencias.append(advertencia)
 
-            # 5. Cobros (completa columnas vacías; el estado es el de Finanzas).
+            # 5. Cobros (completa columnas vacías; el estado y la fecha de pago son los de Finanzas, salvo un cobro
+            # que ya está PAGADO aquí, que no cambia más: 201).
             for cobro in cobros:
                 insertado = await repo.completar_cobro(
                     CobroParcial(
@@ -171,7 +171,8 @@ class CargaInicial:
                         monto=cobro.monto_neto,
                         emitido_en=cobro.emitido_en,
                         vence_en=cobro.vence_en,
-                        estado=cobro.estado if cobro.estado in (PENDIENTE, VENCIDO) else None,
+                        estado=cobro.estado if cobro.estado in ESTADOS_COBRO else None,
+                        pagado_en=cobro.pagado_en,
                     ),
                     ahora,
                 )

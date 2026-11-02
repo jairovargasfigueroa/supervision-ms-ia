@@ -279,4 +279,5 @@ def _cobro(datos: dict[str, Any], obra_id: str) -> CobroCargado:
         emitido_en=campos.fecha_opcional(datos, "emitidoEn"),
         vence_en=campos.fecha_opcional(datos, "venceEn"),
         estado=campos.texto_opcional(datos, "estado"),
+        pagado_en=campos.fecha_opcional(datos, "pagadoEn"),
     )

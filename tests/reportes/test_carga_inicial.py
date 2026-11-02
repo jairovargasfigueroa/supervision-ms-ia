@@ -183,6 +183,7 @@ async def test_carga_los_datos_de_la_011_y_el_avance_coincide_con_obras(
     assert vencido["zona"] == "NORTE"
     assert cobros[cobro_id(2, 1)]["estado"] == "PENDIENTE"
     assert cobros[cobro_id(2, 1)]["zona"] == "ESTE"
+    assert all(c["pagado_en"] is None for c in cobros.values())  # la 011 no tiene pagos (201)
 
     movimientos = await filas(motor, rpt_movimiento)
     assert len(movimientos) == 67
@@ -262,6 +263,56 @@ async def test_eventos_viejos_despues_de_la_carga_no_suman(motor: AsyncEngine) -
     )
     nueva = await fila(motor, rpt_planilla, planilla_id=planilla_id(2, 2))
     assert (nueva["veces_observada"], nueva["ultimo_motivo"], nueva["ultimo_origen"]) == (2, "Otra vez.", "CLIENTE")
+
+
+# Cobros pagados (201)
+
+PAGADO_EN = "2026-10-27"
+
+
+def _cobro_emitido_1_1() -> dict[str, Any]:
+    return {
+        "planillaId": planilla_id(1, 1),
+        "cobroId": cobro_id(1, 1),
+        "numero": "COB-2026-0001",
+        "venceEn": "2026-10-18",
+    }
+
+
+async def test_carga_el_estado_pagado_y_la_fecha_de_pago_de_finanzas(motor: AsyncEngine) -> None:
+    servicios = Servicios011(cobros_pagados={cobro_id(1, 1): PAGADO_EN})
+    resultado = await _correr(motor, servicios, "0f000000-0000-4000-8000-000000000001")
+    assert resultado.estado == "TERMINADA"
+    pagado = await fila(motor, rpt_cobro, cobro_id=cobro_id(1, 1))
+    assert (pagado["estado"], pagado["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+    assert pagado["numero"] == "COB-2026-0001"
+    pendiente = await fila(motor, rpt_cobro, cobro_id=cobro_id(2, 1))
+    assert (pendiente["estado"], pendiente["pagado_en"]) == ("PENDIENTE", None)
+
+
+async def test_carga_completa_el_pago_de_un_cobro_que_ya_trajo_un_evento(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroEmitido", _cobro_emitido_1_1(), ocurrido_en="2026-09-18T14:00:00Z")
+    assert (await fila(motor, rpt_cobro, cobro_id=cobro_id(1, 1)))["estado"] == "VENCIDO"
+
+    await _correr(
+        motor, Servicios011(cobros_pagados={cobro_id(1, 1): PAGADO_EN}), "0f000000-0000-4000-8000-000000000001"
+    )
+    cobro = await fila(motor, rpt_cobro, cobro_id=cobro_id(1, 1))
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+
+
+async def test_carga_con_finanzas_atrasado_no_vuelve_atras_un_pagado(motor: AsyncEngine) -> None:
+    # El pago llegó por evento; la carga lee el cobro todavía VENCIDO y sin fecha de pago: un PAGADO no cambia más.
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroEmitido", _cobro_emitido_1_1(), ocurrido_en="2026-09-18T14:00:00Z")
+    await eventos.publicar("CobroPagado", {"cobroId": cobro_id(1, 1), "pagadoEn": PAGADO_EN})
+    assert eventos.canal.publicados == []
+
+    await _correr(motor, Servicios011(), "0f000000-0000-4000-8000-000000000001")
+    cobro = await fila(motor, rpt_cobro, cobro_id=cobro_id(1, 1))
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+    assert str(cobro["obra_id"]) == OBRA[1]  # las columnas vacías sí se completan
 
 
 class BaseConPausa(BaseReportesSql):
