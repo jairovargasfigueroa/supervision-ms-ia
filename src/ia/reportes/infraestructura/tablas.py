@@ -1,4 +1,5 @@
-"""Tablas de `reportes_db` (SQLAlchemy Core). Las crea la migración `0001_inicial`; aquí solo se describen."""
+"""Tablas de `reportes_db` (SQLAlchemy Core). Las crean las migraciones (`0001_inicial`; `0003_cobro_pagado` agrega
+`rpt_cobro.pagado_en`); aquí solo se describen."""
 
 from sqlalchemy import CHAR, Boolean, Column, Date, DateTime, Index, Integer, Numeric, String, Table, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -90,6 +91,7 @@ rpt_cobro = Table(
     Column("emitido_en", Date),
     Column("vence_en", Date),
     Column("estado", String),
+    Column("pagado_en", Date),
     Column("actualizado_en", DateTime(timezone=True), nullable=False),
 )
 
