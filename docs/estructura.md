@@ -18,6 +18,7 @@ migraciones/                      Alembic de reportes_db (env.py usa IA_REPORTES
   versions/0001_inicial.py        rpt_obra_resumen, rpt_planilla, rpt_consumo_material, rpt_movimiento, rpt_cobro,
                                   evento_aplicado, carga_inicial
   versions/0002_lector_reportes.py GRANT SELECT de ia_reportes_lector sobre las 5 tablas rpt_* (503)
+  versions/0003_cobro_pagado.py   rpt_cobro.pagado_en (201)
 src/ia/
   main.py                         crear_app() (FastAPI) y ejecutar() → ia-api (Uvicorn en IA_PUERTO)
   worker.py                       ejecutar() → ia-worker (consumidor + tareas programadas)
@@ -57,7 +58,7 @@ src/ia/
       tablas.py                   tablas de Core de reportes_db
       repositorio_sql.py          RepositorioReportesSql y BaseReportesSql (transacción, pg_try_advisory_lock)
       campos.py                   lectura tolerante de campos JSON (DatoInvalido); la usan eventos y clientes REST
-      eventos.py                  traduce `datos` de los 6 eventos a lecturas y registra los manejadores (inbox + proyección)
+      eventos.py                  traduce `datos` de los 7 eventos a lecturas y registra los manejadores (inbox + proyección)
       clientes_rest.py            TokenServicio (client credentials de ia-reportes), ClienteServicio (GET, 10 s,
                                   un reintento), FuenteObrasRest, FuenteMaterialesRest, FuenteFinanzasRest
       programador.py              apscheduler: 00:20 cobros vencidos, 00:30 plazo (America/La_Paz)

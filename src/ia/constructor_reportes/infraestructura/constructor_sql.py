@@ -15,7 +15,7 @@ from sqlalchemy.sql.elements import ColumnElement, Label
 
 from ia.constructor_reportes.aplicacion.puertos import ConsultaResuelta
 from ia.constructor_reportes.dominio.validacion import FiltroValidado, RecetaValidada
-from ia.constructor_reportes.infraestructura.expresiones import FILTROS_OBRA_ATIPICOS, HOY, SQL, o
+from ia.constructor_reportes.infraestructura.expresiones import FILTROS_OBRA_ATIPICOS, HOY, POR_VENCER, SQL, o
 
 _AGREGACIONES: dict[str, Callable[[ColumnElement[Any] | None], ColumnElement[Any]]] = {
     "CONTEO": lambda _: func.count(),
@@ -81,7 +81,8 @@ def _condicion(f: FiltroValidado, expresion: ColumnElement[Any], consulta: Consu
         return expresion.ilike(patron_contiene(f.valor), escape=ESCAPE)
     if f.campo == "venceEnDias":
         assert isinstance(f.valor, int)
-        return and_(expresion >= HOY, expresion <= consulta.hoy + timedelta(days=f.valor))
+        # «Por vencer» = pendientes que vencen entre hoy y hoy + n (los PAGADO no, 201).
+        return and_(expresion >= HOY, expresion <= consulta.hoy + timedelta(days=f.valor), POR_VENCER)
     if f.operador == "EN":
         assert isinstance(f.valor, tuple)
         return expresion.in_(list(f.valor))

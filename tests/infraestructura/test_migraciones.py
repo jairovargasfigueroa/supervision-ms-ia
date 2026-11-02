@@ -34,6 +34,8 @@ def test_la_migracion_crea_las_tablas_y_coincide_con_las_de_core(url_migrada: st
             assert tablas >= TABLAS_401
             columnas_planilla = {c["name"] for c in inspect(conexion).get_columns("rpt_planilla")}
             assert {"cargada_en", "veces_observada", "ultimo_origen"} <= columnas_planilla
+            columnas_cobro = {c["name"]: c for c in inspect(conexion).get_columns("rpt_cobro")}
+            assert columnas_cobro["pagado_en"]["nullable"] is True  # 201
             diferencias = compare_metadata(MigrationContext.configure(conexion), metadata)
         assert diferencias == []
     finally:

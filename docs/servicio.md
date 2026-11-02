@@ -22,7 +22,8 @@ Los tres salen de la misma imagen (`Dockerfile`).
 | `ContratoRegistrado` | `estado = EN_EJECUCION`; si la obra no existe todavía, falla y se reintenta |
 | `PlanillaAprobada` | Bloquea la obra; guarda la planilla `APROBADA` (monto del periodo = Σ líneas, avance del periodo); recalcula el avance desde `rpt_planilla`; completa el cobro (obra, planilla, neto, cliente, zona). Sin obra: falla y se reintenta |
 | `PlanillaObservada` | Bloquea la obra si existe; planilla `OBSERVADA` (si no estaba `APROBADA`), `veces_observada + 1`, último motivo y origen. Si la trajo la carga inicial y el evento es anterior o igual a `cargada_en`, no suma |
-| `CobroEmitido` | Completa el cobro (número, emisión = fecha de `ocurridoEn` en La Paz, vencimiento, planilla); `estado` = `PENDIENTE`, o `VENCIDO` si ya venció |
+| `CobroEmitido` | Completa el cobro (número, emisión = fecha de `ocurridoEn` en La Paz, vencimiento, planilla); `estado` = `PENDIENTE`, o `VENCIDO` si ya venció (un `PAGADO` no cambia) |
+| `CobroPagado` (201) | `estado = PAGADO` y `pagado_en`; si el cobro todavía no está en `rpt_cobro`, falla y se reintenta |
 | `MovimientoRegistrado` | Inserta el movimiento si no existe; solo si lo insertó y es `SALIDA`, suma cantidad, monto (cantidad × `precioReferencial`, 0 si no viene) y salidas en `rpt_consumo_material` |
 
 Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Finanzas):
@@ -30,6 +31,7 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 - Avance (%) = Σ monto del periodo de las planillas `APROBADA` / monto del contrato × 100, 2 decimales mitad hacia arriba.
 - Plazo transcurrido (%) = días desde la fecha de inicio hasta hoy (La Paz) / plazo en días × 100, entre 0 y 100.
 - Un cobro `PENDIENTE` pasa a `VENCIDO` al día siguiente de su vencimiento.
+- Un cobro `PENDIENTE` o `VENCIDO` pasa a `PAGADO` con `CobroPagado` (201); un `PAGADO` no cambia más (ni la tarea de vencidos, ni un `CobroEmitido` tardío, ni la carga inicial).
 
 ### Mensajería
 
@@ -41,7 +43,7 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 
 | Hora | Tarea |
 |---|---|
-| 00:20 | Cobros `PENDIENTE` con `vence_en` < hoy → `VENCIDO` |
+| 00:20 | Cobros `PENDIENTE` con `vence_en` < hoy → `VENCIDO` (los `PAGADO` no se tocan) |
 | 00:30 | Recalcular `plazo_pct` de todas las obras |
 
 ### Carga inicial
@@ -50,6 +52,7 @@ Reglas de dominio (`reportes/dominio/indicadores.py`, las mismas que Obras y Fin
 - Token propio por *client credentials* (`ia-reportes`, rol `gerente`); pide otro cuando falta menos de 30 s para que venza. `X-Request-Id` = `carga_id` en todas las llamadas.
 - Pasos: precios del catálogo de Materiales; lista de obras; por cada obra, su detalle, planillas (y cada planilla), cobros y movimientos; con todo en memoria, **una transacción por obra** con las mismas reglas que los eventos («si no existe»). Compara el avance con el de Obras y registra una advertencia si no coincide.
 - 10 s por llamada; un reintento tras 1 s ante `5xx`, error de red o tiempo agotado. Si vuelve a fallar, la carga queda `FALLIDA` con el servicio y la obra en `error`; lo cargado queda y la siguiente corrida lo completa.
+- Cobros: completa las columnas vacías; el estado (`PENDIENTE`, `VENCIDO` o `PAGADO`) y `pagadoEn` son los de Finanzas (201), salvo que el cobro ya esté `PAGADO` en la base de reportes (no cambia más).
 - Planillas: `APROBADA` con monto y avance del periodo; `OBSERVADA` (y `BORRADOR`, `PRESENTADA` o `APROBANDO` con `observacion`) como la dejaría `PlanillaObservada`, sin periodo ni montos; las demás no se cargan (no llega ningún evento por ellas).
 - Aproximaciones (lo que los servicios no exponen): una planilla observada antes de la carga cuenta como máximo 1 vez (`ultimo_origen` vacío), `aprobada_en` vacía, y el precio de los movimientos anteriores es el precio actual del catálogo.
 

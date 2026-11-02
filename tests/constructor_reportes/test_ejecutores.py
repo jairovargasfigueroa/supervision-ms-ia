@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from pymongo.asynchronous.database import AsyncDatabase
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from apoyo import reportes_503 as d
@@ -17,6 +18,7 @@ from ia.constructor_reportes.dominio.validacion import validar_receta
 from ia.constructor_reportes.infraestructura.atipicos_mongo import ConsultaAtipicosMongo
 from ia.constructor_reportes.infraestructura.constructor_sql import patron_contiene
 from ia.constructor_reportes.infraestructura.ejecutor_sql import EjecutorReportes, EjecutorSql
+from ia.reportes.infraestructura.tablas import rpt_cobro
 
 pytestmark = pytest.mark.integracion
 
@@ -170,6 +172,61 @@ async def test_cobros_solo_con_numero_y_obra_y_dias_para_vencer(ejecutor: Ejecut
         (d.NOMBRE_O1, 2, Decimal("61881.80"), Decimal("20000.00")),
         (d.NOMBRE_O2, 1, Decimal("5000.00"), Decimal("0.00")),
     ]
+
+
+async def _pagar_cobro_0002(motor: AsyncEngine) -> None:
+    async with motor.begin() as conexion:
+        await conexion.execute(
+            update(rpt_cobro)
+            .where(rpt_cobro.c.cobro_id == "c2000000-0000-4000-8000-000000000002")
+            .values(estado="PAGADO", pagado_en=date(2027, 3, 18))
+        )
+
+
+@pytest.mark.parametrize("modo", [REST, MCP])
+async def test_cobros_pagados_con_su_fecha_de_pago(ejecutor: EjecutorReportes, motor: AsyncEngine, modo: str) -> None:
+    # 201: filtro de estado PAGADO y columna pagado_en; «cobrado» sigue sumando los emitidos (pagados o no).
+    await _pagar_cobro_0002(motor)
+    pagados = await _consultar(
+        ejecutor,
+        {
+            "conjunto": "COBROS",
+            "filtros": [_f("estado", "IGUAL", "PAGADO")],
+            "columnas": ["numero", "estado", "pagado_en"],
+        },
+        modo,
+    )
+    assert pagados.filas == [("COB-2027-0002", "PAGADO", date(2027, 3, 18))]
+    sin_pagar = await _consultar(
+        ejecutor,
+        {
+            "conjunto": "COBROS",
+            "filtros": [_f("estado", "EN", ["PENDIENTE", "VENCIDO"])],
+            "columnas": ["numero", "pagado_en"],
+        },
+        modo,
+    )
+    assert sin_pagar.filas == [("COB-2027-0003", None), ("COB-2027-0001", None)]
+    cobrado = await _consultar(
+        ejecutor,
+        {
+            "conjunto": "COBROS",
+            "agruparPor": ["obra"],
+            "metricas": [{"funcion": "SUMA", "campo": "monto"}, {"funcion": "SUMA", "campo": "monto_vencido"}],
+            "orden": [{"por": "suma_monto", "direccion": "DESC"}],
+        },
+        modo,
+    )
+    assert cobrado.filas[0] == (d.NOMBRE_O1, Decimal("61881.80"), Decimal("20000.00"))
+
+
+@pytest.mark.parametrize("modo", [REST, MCP])
+async def test_por_vencer_no_lista_cobros_pagados(ejecutor: EjecutorReportes, motor: AsyncEngine, modo: str) -> None:
+    # «¿Qué cobros vencen en los próximos 15 días?» sin filtro de estado: solo los pendientes (201).
+    receta = {"conjunto": "COBROS", "filtros": [_f("venceEnDias", "IGUAL", 15)], "columnas": ["numero", "estado"]}
+    assert (await _consultar(ejecutor, receta, modo)).filas == [("COB-2027-0002", "PENDIENTE")]
+    await _pagar_cobro_0002(motor)
+    assert (await _consultar(ejecutor, receta, modo)).filas == []
 
 
 async def test_planillas_sin_periodo_y_motivo_recortado(ejecutor: EjecutorReportes) -> None:

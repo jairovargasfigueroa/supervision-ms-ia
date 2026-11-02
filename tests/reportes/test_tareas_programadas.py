@@ -7,7 +7,7 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from apoyo.eventos import OBRA_1, OBRA_2, Eventos, cobro_emitido_101, fila, obra_registrada
+from apoyo.eventos import OBRA_1, OBRA_2, Eventos, cobro_emitido_101, cobro_pagado_101, fila, obra_registrada
 from ia.comun.tiempo import RelojFijo
 from ia.reportes.aplicacion.tareas_programadas import TareasProgramadas
 from ia.reportes.infraestructura.programador import crear_programador, programar_reportes
@@ -43,6 +43,17 @@ async def test_vencer_cobros_en_el_borde(motor: AsyncEngine) -> None:
     assert (await fila(motor, rpt_cobro, cobro_id=COBRO_A))["estado"] == "VENCIDO"  # venció ayer
     assert (await fila(motor, rpt_cobro, cobro_id=COBRO_B))["estado"] == "PENDIENTE"  # vence hoy
     assert await tareas.vencer_cobros() == 0  # idempotente
+
+
+async def test_vencer_cobros_no_toca_los_pagados(motor: AsyncEngine) -> None:
+    # 201: pagado antes de vencer; al día siguiente del vencimiento sigue PAGADO con su fecha.
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroEmitido", cobro_emitido_101(vence_en="2026-11-09"))
+    await eventos.publicar("CobroPagado", cobro_pagado_101(pagado_en="2026-10-28"))
+    tareas = TareasProgramadas(BaseReportesSql(motor), _a_las(date(2026, 11, 10)))
+    assert await tareas.vencer_cobros() == 0
+    cobro = await fila(motor, rpt_cobro, cobro_id=COBRO_A)
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 28))
 
 
 async def test_recalcular_plazo_de_todas_las_obras(motor: AsyncEngine) -> None:

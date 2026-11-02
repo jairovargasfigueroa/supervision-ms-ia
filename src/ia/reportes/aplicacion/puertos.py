@@ -40,7 +40,7 @@ class PlanillaGuardada:
 @dataclass(frozen=True)
 class CobroParcial:
     """Columnas de `rpt_cobro` que trae cada camino. Las `None` no se tocan (se completan con COALESCE), salvo
-    `estado`, que si viene reemplaza al anterior."""
+    `estado`, que si viene reemplaza al anterior (menos un `PAGADO`, que no cambia más: 201)."""
 
     cobro_id: str
     numero: str | None = None
@@ -52,6 +52,7 @@ class CobroParcial:
     emitido_en: date | None = None
     vence_en: date | None = None
     estado: str | None = None
+    pagado_en: date | None = None
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,13 @@ class RepositorioReportes(Protocol):
         """Inserta o completa las columnas vacías. `True` si insertó."""
         ...
 
-    async def cobros_pendientes(self) -> list[CobroPendiente]: ...
+    async def marcar_pagado(self, cobro_id: str, pagado_en: date, ahora: datetime) -> bool:
+        """`PAGADO` con su fecha de pago (si ya estaba `PAGADO`, conserva la fecha). `False` si el cobro no existe."""
+        ...
+
+    async def cobros_pendientes(self) -> list[CobroPendiente]:
+        """Solo los `PENDIENTE` (ni `VENCIDO` ni `PAGADO`)."""
+        ...
 
     async def marcar_vencidos(self, cobro_ids: list[str], ahora: datetime) -> int:
         """Los que siguen `PENDIENTE` pasan a `VENCIDO`; devuelve cuántos cambió."""

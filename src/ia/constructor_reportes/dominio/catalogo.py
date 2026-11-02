@@ -233,8 +233,8 @@ COBROS = ConjuntoCatalogo(
     conjunto="COBROS",
     titulo="Cobros",
     descripcion=(
-        "Cobros emitidos al cliente: número, monto neto, emisión, vencimiento, estado y días para vencer. «Cobrado» "
-        "son los cobros emitidos (no hay registro de pagos)."
+        "Cobros emitidos al cliente: número, monto neto, emisión, vencimiento, estado (PENDIENTE, VENCIDO o PAGADO), "
+        "fecha de pago y días para vencer. «Cobrado» son los cobros emitidos, pagados o no."
     ),
     campos=(
         CampoCatalogo("numero", "Número", TEXTO),
@@ -247,6 +247,7 @@ COBROS = ConjuntoCatalogo(
         CampoCatalogo("monto_vencido", "Monto vencido", MONTO, funciones=GENERALES, columna=False),
         CampoCatalogo("emitido_en", "Emitido", FECHA),
         CampoCatalogo("vence_en", "Vence", FECHA, funciones=frozenset({MINIMO, MAXIMO})),
+        CampoCatalogo("pagado_en", "Fecha de pago", FECHA),
         CampoCatalogo("dias_para_vencer", "Días para vencer", NUMERO),
     ),
     filtros=(
@@ -255,9 +256,14 @@ COBROS = ConjuntoCatalogo(
         F_ZONA,
         F_CLIENTE,
         F_CLIENTE_ID,
-        FiltroCatalogo("estado", "Estado", IGUAL_EN, V_ENUM, ("PENDIENTE", "VENCIDO")),
+        FiltroCatalogo("estado", "Estado", IGUAL_EN, V_ENUM, ("PENDIENTE", "VENCIDO", "PAGADO")),
         FiltroCatalogo(
-            "venceEnDias", "Vencen en los próximos días", frozenset({"IGUAL"}), V_ENTERO, minimo=1, maximo=90
+            "venceEnDias",
+            "Pendientes que vencen en los próximos días",
+            frozenset({"IGUAL"}),
+            V_ENTERO,
+            minimo=1,
+            maximo=90,
         ),
         FiltroCatalogo("periodo", "Mes de emisión", frozenset({"IGUAL", "DESDE", "HASTA"}), V_PERIODO),
     ),

@@ -1,4 +1,4 @@
-"""`datos` de los 6 eventos con los valores de la 011 (obra 1 y obra 2) y un procesador de eventos de prueba."""
+"""`datos` de los 7 eventos con los valores de la 011 (obra 1 y obra 2) y un procesador de eventos de prueba."""
 
 import uuid
 from datetime import UTC, datetime
@@ -37,6 +37,7 @@ CLAVE_POR_TIPO = {
     "PlanillaAprobada": claves.PLANILLA_APROBADA,
     "PlanillaObservada": claves.PLANILLA_OBSERVADA,
     "CobroEmitido": claves.COBRO_EMITIDO,
+    "CobroPagado": claves.COBRO_PAGADO,
     "MovimientoRegistrado": claves.MOVIMIENTO_REGISTRADO,
 }
 
@@ -97,6 +98,19 @@ def planilla_aprobada_102() -> dict[str, Any]:
 
 def cobro_emitido_101(vence_en: str = "2026-10-18") -> dict[str, Any]:
     return {"planillaId": PLANILLA_101, "cobroId": COBRO_101, "numero": "COB-2026-0001", "venceEn": vence_en}
+
+
+def cobro_pagado_101(pagado_en: str = "2026-10-27") -> dict[str, Any]:
+    """`CobroPagado` (201) del cobro de la planilla 101."""
+    return {
+        "cobroId": COBRO_101,
+        "planillaId": PLANILLA_101,
+        "obraId": OBRA_1,
+        "numero": "COB-2026-0001",
+        "montoNeto": 290134.80,
+        "pagadoEn": pagado_en,
+        "comprobante": "TRF-883412",
+    }
 
 
 def movimiento(

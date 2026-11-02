@@ -123,6 +123,8 @@ Devuelve: 200 {
 Errores: 401 · 403
 ```
 
+- Conjunto `COBROS` (201): el filtro `estado` admite `PENDIENTE`, `VENCIDO` y `PAGADO`, y la columna `pagado_en` («Fecha de pago», `FECHA`) muestra la fecha de pago (null si no está pagado). El filtro `venceEnDias` («Pendientes que vencen en los próximos días») solo cuenta los `PENDIENTE`: un `PAGADO` ya no está por vencer. «Cobrado» sigue siendo «cobros emitidos» (reglas del negocio). Igual en la herramienta MCP `consultar_reporte`.
+
 - El modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) solo devuelve una **receta**; el código la valida contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados (usuario `ia_reportes_lector`, `READ ONLY`, 5 s). Nunca ejecuta SQL del modelo.
 
 - Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles (también `agente_ia`) reciben `403 SIN_PERMISO` en todas las rutas REST. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido). **Excepción:** `/mcp` acepta **solo** `agente_ia` (501).
@@ -203,6 +205,7 @@ La cola durable `ia` y sus enlaces están en las definiciones de RabbitMQ de `in
 | `evento.obras.PlanillaAprobada` | Obras | `planillaId, obraId, periodo, neto, cobroId, lineas[{monto}]` (+ `ocurridoEn` del sobre) | `rpt_planilla`, avance de `rpt_obra_resumen`, `rpt_cobro` |
 | `evento.obras.PlanillaObservada` | Obras | `planillaId, obraId, motivo, origen` (+ `ocurridoEn`) | `rpt_planilla` (veces observada, último motivo) |
 | `evento.finanzas.CobroEmitido` | Finanzas | `planillaId, cobroId, numero, venceEn` (+ `ocurridoEn` = emisión) | `rpt_cobro` |
+| `evento.finanzas.CobroPagado` (201) | Finanzas | `cobroId, pagadoEn` (también trae `planillaId, obraId, numero, montoNeto, comprobante`, que no usa) | `rpt_cobro.estado = PAGADO` y `pagado_en`; si el cobro todavía no está en `rpt_cobro`, falla y se reintenta |
 | `evento.materiales.MovimientoRegistrado` | Materiales | `movimientoId, obraId, materialId, tipo, cantidad, partidaId, periodo, superaStock, registradoEn, precioReferencial` (`precioReferencial` desde la 401; puede faltar) | `rpt_movimiento` y, si es `SALIDA`, `rpt_consumo_material` |
 
 - Sobre común, `version` 1. Otra versión, cuerpo que no es JSON, `datos` incompletos o un `tipo` sin manejador → directo a `plataforma.fallidos`.
@@ -222,7 +225,7 @@ Con el token del cliente confidencial `ia-reportes` (*client credentials*, rol d
 | 3 | Obras `GET /obras/{id}` | `nombre`, `ubicacion`, `zona`, `estado`, `fechaInicio`, `asignaciones`, `contrato.monto`, `contrato.plazoDias`, `avancePct` (para comprobar) |
 | 4 | Obras `GET /obras/{id}/planillas` | Planillas de la obra con `estado` |
 | 5 | Obras `GET /planillas/{id}` (cada planilla del paso 4) | `periodo`, `neto`, `lineas[].monto`, `observacion`, `cobroId` |
-| 6 | Finanzas `GET /cobros?obraId={id}&pagina=N&tamano=100` (todas las páginas) | `id`, `numero`, `planillaId`, `montoNeto`, `emitidoEn`, `venceEn`, `estado` |
+| 6 | Finanzas `GET /cobros?obraId={id}&pagina=N&tamano=100` (todas las páginas) | `id`, `numero`, `planillaId`, `montoNeto`, `emitidoEn`, `venceEn`, `estado` (`PENDIENTE`, `VENCIDO` o `PAGADO`), `pagadoEn` (201) |
 | 7 | Materiales `GET /obras/{id}/movimientos?pagina=N&tamano=100&orden=registradoEn&direccion=asc` (todas las páginas) | `id`, `materialId`, `tipo`, `cantidad`, `partidaId`, `periodo`, `superaStock`, `registradoEn` |
 
 Un `404 OBRA_NO_ENCONTRADA` de Materiales en el paso 7 se toma como «sin movimientos».

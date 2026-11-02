@@ -13,6 +13,9 @@ OBSERVADA: Final = "OBSERVADA"
 # rpt_cobro.estado
 PENDIENTE: Final = "PENDIENTE"
 VENCIDO: Final = "VENCIDO"
+PAGADO: Final = "PAGADO"
+"""201: lo deja `CobroPagado` (o la carga inicial); un `PAGADO` no cambia más."""
+ESTADOS_COBRO: Final = frozenset({PENDIENTE, VENCIDO, PAGADO})
 
 # rpt_movimiento.tipo
 INGRESO: Final = "INGRESO"

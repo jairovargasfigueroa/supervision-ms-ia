@@ -226,6 +226,8 @@ class Servicios011:
     sin_acceso_materiales: set[str] = field(default_factory=set)
     cobros_con_fallo: set[str] = field(default_factory=set)
     """Obras cuyo `GET /cobros?obraId=` responde 503."""
+    cobros_pagados: dict[str, str] = field(default_factory=dict)
+    """Cobros que Finanzas devuelve `PAGADO` (id → `pagadoEn`, 201); la 011 no tiene pagos."""
     expira_en: int = 300
     tokens_emitidos: int = 0
 
@@ -354,7 +356,10 @@ class Servicios011:
                 "montoNeto": neto,
                 "emitidoEn": emitido,
                 "venceEn": vence,
-                "estado": estado,
+                "estado": "PAGADO" if cobro_id(o, n) in self.cobros_pagados else estado,
+                "pagadoEn": self.cobros_pagados.get(cobro_id(o, n)),
+                "comprobante": None,
+                "envios": [],
             }
             for (o, n, numero, neto, emitido, vence, estado) in COBROS_011
             if o == obra

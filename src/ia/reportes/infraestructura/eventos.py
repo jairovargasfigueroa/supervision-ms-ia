@@ -1,4 +1,4 @@
-"""Adaptador de entrada de eventos: traduce `datos` de los 6 eventos a lecturas y registra sus manejadores.
+"""Adaptador de entrada de eventos: traduce `datos` de los 7 eventos a lecturas y registra sus manejadores.
 
 Lector tolerante: los campos desconocidos se ignoran; `ubicacion` y `zona` (`ObraRegistrada`) y `precioReferencial`
 (`MovimientoRegistrado`) pueden faltar. Un campo obligatorio que falta o no tiene el formato → `MensajeInvalidoError`
@@ -16,6 +16,7 @@ from ia.mensajeria.inbox import manejador_con_inbox
 from ia.mensajeria.sobre import MensajeInvalidoError, Sobre
 from ia.reportes.aplicacion.lecturas import (
     CobroEmitidoLeido,
+    CobroPagadoLeido,
     MovimientoLeido,
     ObraLeida,
     PlanillaAprobadaLeida,
@@ -32,6 +33,7 @@ CONTRATO_REGISTRADO = "evento.finanzas.ContratoRegistrado"
 PLANILLA_APROBADA = "evento.obras.PlanillaAprobada"
 PLANILLA_OBSERVADA = "evento.obras.PlanillaObservada"
 COBRO_EMITIDO = "evento.finanzas.CobroEmitido"
+COBRO_PAGADO = "evento.finanzas.CobroPagado"
 MOVIMIENTO_REGISTRADO = "evento.materiales.MovimientoRegistrado"
 
 Aplicar = Callable[[Sobre, RepositorioReportesSql], Awaitable[object]]
@@ -58,6 +60,7 @@ def registrar_manejadores(
         PLANILLA_APROBADA: lambda s, repo: proyecciones.planilla_aprobada(repo, leer_planilla_aprobada(s)),
         PLANILLA_OBSERVADA: lambda s, repo: proyecciones.planilla_observada(repo, leer_planilla_observada(s)),
         COBRO_EMITIDO: lambda s, repo: proyecciones.cobro_emitido(repo, leer_cobro_emitido(s, zona_horaria)),
+        COBRO_PAGADO: lambda s, repo: proyecciones.cobro_pagado(repo, leer_cobro_pagado(s.datos)),
         MOVIMIENTO_REGISTRADO: lambda s, repo: proyecciones.movimiento_registrado(repo, leer_movimiento(s.datos)),
     }
     for clave, aplicar in manejadores.items():
@@ -119,6 +122,12 @@ def leer_cobro_emitido(sobre: Sobre, zona_horaria: str) -> CobroEmitidoLeido:
         vence_en=campos.fecha(datos, "venceEn"),
         emitido_en=fecha_en_zona(sobre.ocurrido_en, zona_horaria) if sobre.ocurrido_en else None,
     )
+
+
+def leer_cobro_pagado(datos: dict[str, Any]) -> CobroPagadoLeido:
+    """`CobroPagado` (201): usa `cobroId` y `pagadoEn`; los demás campos (`planillaId`, `obraId`, `numero`,
+    `montoNeto`, `comprobante`) se ignoran."""
+    return CobroPagadoLeido(cobro_id=campos.uuid_(datos, "cobroId"), pagado_en=campos.fecha(datos, "pagadoEn"))
 
 
 def leer_movimiento(datos: dict[str, Any], campo_id: str = "movimientoId") -> MovimientoLeido:
