@@ -84,7 +84,8 @@ Modelo de lectura (CQRS) de la 401. Solo lo escribe este servicio (proyecciones 
 | monto | numeric(14,2) | neto de la planilla |
 | emitido_en | date | fecha de `ocurridoEn` de `CobroEmitido` en La Paz |
 | vence_en | date | |
-| estado | varchar | `PENDIENTE`, `VENCIDO` |
+| estado | varchar | `PENDIENTE`, `VENCIDO`, `PAGADO` (201; un `PAGADO` no cambia más) |
+| pagado_en | date | fecha de pago de `CobroPagado` o de `GET /cobros` (201); null si no está pagado |
 | actualizado_en | timestamptz | |
 
 Las columnas que llegan por eventos distintos pueden estar null hasta que llega el otro evento.
