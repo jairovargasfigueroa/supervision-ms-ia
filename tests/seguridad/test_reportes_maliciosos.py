@@ -3,6 +3,7 @@ MongoDB real y `ModeloSimulado` (se prueba la defensa del código, no la suerte 
 
 import itertools
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import Any
 
 import httpx
@@ -142,6 +143,31 @@ async def test_receta_invalida_sin_ninguna_consulta(
     assert respuesta.json()["errores"][0]["campo"] == campo
     assert api.consultas == []
     assert await _contar(motor, rpt_obra_resumen) == len(d.OBRAS)
+
+
+async def test_estado_pagado_del_reporte_de_cobros_va_como_parametro(api: Api, motor: AsyncEngine) -> None:
+    # 201: PAGADO es un valor más de la lista; lo que no está en la lista no llega a la base.
+    async with motor.begin() as conexion:
+        await conexion.execute(
+            update(rpt_cobro)
+            .where(rpt_cobro.c.cobro_id == "c2000000-0000-4000-8000-000000000002")
+            .values(estado="PAGADO", pagado_en=date(2027, 3, 18))
+        )
+    respuesta = await api.pedir(
+        "cobros pagados",
+        {"conjunto": "COBROS", "filtros": _filtro("estado", "IGUAL", "PAGADO"), "columnas": ["numero", "pagado_en"]},
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.json()["filas"] == [["COB-2027-0002", "2027-03-18"]]
+    assert [c["titulo"] for c in respuesta.json()["columnas"]] == ["Número", "Fecha de pago"]
+
+    for valor in ("PAGADO' OR '1'='1", ["PAGADO", "x'); DROP TABLE rpt_cobro; --"], {"$ne": None}):
+        api.consultas.clear()
+        operador = "EN" if isinstance(valor, list) else "IGUAL"
+        invalida = await api.pedir("cobros", {"conjunto": "COBROS", "filtros": _filtro("estado", operador, valor)})
+        assert invalida.status_code == 422
+        assert api.consultas == []
+    assert await _contar(motor, rpt_cobro) == len(d.COBROS)
 
 
 async def test_s8_texto_enorme_no_llama_al_modelo(api: Api) -> None:

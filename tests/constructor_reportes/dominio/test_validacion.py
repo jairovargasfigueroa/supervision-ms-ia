@@ -150,6 +150,26 @@ def test_receta_invalida_con_rutas() -> None:
     assert _invalida({"conjunto": "OBRAS", "filtros": [{"campo": "obra", "operador": "CONTIENE", "valor": "x"}]})
 
 
+def test_cobros_admiten_el_estado_pagado_y_la_fecha_de_pago() -> None:
+    # 201: valor PAGADO del filtro de estado y columna «Fecha de pago», en los dos modos.
+    pagados = {
+        "conjunto": "COBROS",
+        "filtros": [{"campo": "estado", "operador": "EN", "valor": ["VENCIDO", "PAGADO"]}],
+        "columnas": ["numero", "estado", "pagado_en"],
+    }
+    for modo in (REST, MCP):
+        r = validar_receta(pagados, modo, HOY)
+        assert r.filtros == (FiltroValidado("estado", "EN", ("VENCIDO", "PAGADO")),)
+        assert [(c.clave, c.titulo, c.tipo) for c in r.columnas_salida()][-1] == ("pagado_en", "Fecha de pago", "FECHA")
+    assert _invalida(
+        {"conjunto": "COBROS", "filtros": [{"campo": "estado", "operador": "IGUAL", "valor": "PAGADA"}]}
+    ) == [("filtros[0].valor", "El valor es uno de PENDIENTE, VENCIDO, PAGADO.")]
+    assert _invalida({"conjunto": "COBROS", "agruparPor": ["pagado_en"], "metricas": [{"funcion": "CONTEO"}]})[0][
+        0
+    ] == ("agruparPor[0]")
+    assert "pagado_en" not in CATALOGO["COBROS"].columnas_defecto
+
+
 def test_periodos_futuros_invertidos_o_largos() -> None:
     def periodo(*filtros: tuple[str, str]) -> dict[str, Any]:
         return {

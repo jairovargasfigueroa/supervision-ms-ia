@@ -137,6 +137,7 @@ COBROS = ExpresionesConjunto(
         "monto_vencido": case((c.estado == literal("VENCIDO"), c.monto), else_=literal(0)),
         "emitido_en": c.emitido_en,
         "vence_en": c.vence_en,
+        "pagado_en": c.pagado_en,
         "dias_para_vencer": (c.vence_en - HOY).cast(Integer),
     },
     filtros={
