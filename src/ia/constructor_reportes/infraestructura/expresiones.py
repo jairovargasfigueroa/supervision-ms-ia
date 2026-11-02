@@ -123,6 +123,8 @@ MOVIMIENTOS = ExpresionesConjunto(
 )
 
 MES_EMISION = func.to_char(c.emitido_en, literal("YYYY-MM"))
+POR_VENCER: ColumnElement[bool] = c.estado == literal("PENDIENTE")
+"""`venceEnDias` solo cuenta los cobros pendientes: un `PAGADO` (201) ya no está por vencer."""
 COBROS = ExpresionesConjunto(
     # Solo cobros con número y con obra: hasta que llegan CobroEmitido y PlanillaAprobada pueden faltar (401).
     origen=rpt_cobro.join(rpt_obra_resumen, c.obra_id == o.obra_id),

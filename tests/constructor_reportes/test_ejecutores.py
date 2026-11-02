@@ -220,6 +220,15 @@ async def test_cobros_pagados_con_su_fecha_de_pago(ejecutor: EjecutorReportes, m
     assert cobrado.filas[0] == (d.NOMBRE_O1, Decimal("61881.80"), Decimal("20000.00"))
 
 
+@pytest.mark.parametrize("modo", [REST, MCP])
+async def test_por_vencer_no_lista_cobros_pagados(ejecutor: EjecutorReportes, motor: AsyncEngine, modo: str) -> None:
+    # «¿Qué cobros vencen en los próximos 15 días?» sin filtro de estado: solo los pendientes (201).
+    receta = {"conjunto": "COBROS", "filtros": [_f("venceEnDias", "IGUAL", 15)], "columnas": ["numero", "estado"]}
+    assert (await _consultar(ejecutor, receta, modo)).filas == [("COB-2027-0002", "PENDIENTE")]
+    await _pagar_cobro_0002(motor)
+    assert (await _consultar(ejecutor, receta, modo)).filas == []
+
+
 async def test_planillas_sin_periodo_y_motivo_recortado(ejecutor: EjecutorReportes) -> None:
     observadas = await _consultar(
         ejecutor,

@@ -258,7 +258,12 @@ COBROS = ConjuntoCatalogo(
         F_CLIENTE_ID,
         FiltroCatalogo("estado", "Estado", IGUAL_EN, V_ENUM, ("PENDIENTE", "VENCIDO", "PAGADO")),
         FiltroCatalogo(
-            "venceEnDias", "Vencen en los próximos días", frozenset({"IGUAL"}), V_ENTERO, minimo=1, maximo=90
+            "venceEnDias",
+            "Pendientes que vencen en los próximos días",
+            frozenset({"IGUAL"}),
+            V_ENTERO,
+            minimo=1,
+            maximo=90,
         ),
         FiltroCatalogo("periodo", "Mes de emisión", frozenset({"IGUAL", "DESDE", "HASTA"}), V_PERIODO),
     ),
