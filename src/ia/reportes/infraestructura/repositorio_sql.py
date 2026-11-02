@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +27,7 @@ from ia.reportes.dominio.valores import (
     CARGA_FALLIDA,
     EN_EJECUCION,
     OBSERVADA,
+    PAGADO,
     PENDIENTE,
     SIN_CONTRATO,
     VENCIDO,
@@ -228,7 +229,17 @@ class RepositorioReportesSql:
     # rpt_cobro
 
     async def completar_cobro(self, cobro: CobroParcial, ahora: datetime) -> bool:
-        columnas = ("numero", "obra_id", "planilla_id", "cliente_id", "zona", "monto", "emitido_en", "vence_en")
+        columnas = (
+            "numero",
+            "obra_id",
+            "planilla_id",
+            "cliente_id",
+            "zona",
+            "monto",
+            "emitido_en",
+            "vence_en",
+            "pagado_en",
+        )
         consulta = insert(rpt_cobro).values(
             cobro_id=cobro.cobro_id,
             estado=cobro.estado,
@@ -238,10 +249,27 @@ class RepositorioReportesSql:
         set_: dict[str, Any] = {
             columna: func.coalesce(rpt_cobro.c[columna], consulta.excluded[columna]) for columna in columnas
         }
-        set_["estado"] = func.coalesce(consulta.excluded.estado, rpt_cobro.c.estado)
+        # Un PAGADO no cambia más (201): ni un CobroEmitido tardío ni la carga inicial lo vuelven a PENDIENTE o VENCIDO.
+        set_["estado"] = case(
+            (rpt_cobro.c.estado == PAGADO, PAGADO), else_=func.coalesce(consulta.excluded.estado, rpt_cobro.c.estado)
+        )
         set_["actualizado_en"] = ahora
         upsert = consulta.on_conflict_do_update(index_elements=["cobro_id"], set_=set_).returning(_INSERTADA)
         return bool((await self._c.execute(upsert)).scalar_one())
+
+    async def marcar_pagado(self, cobro_id: str, pagado_en: date, ahora: datetime) -> bool:
+        t = rpt_cobro.c
+        resultado = await self._c.execute(
+            update(rpt_cobro)
+            .where(t.cobro_id == cobro_id)
+            .values(
+                estado=PAGADO,
+                pagado_en=case((t.estado == PAGADO, func.coalesce(t.pagado_en, pagado_en)), else_=pagado_en),
+                actualizado_en=ahora,
+            )
+            .returning(t.cobro_id)
+        )
+        return resultado.first() is not None
 
     async def cobros_pendientes(self) -> list[CobroPendiente]:
         t = rpt_cobro.c

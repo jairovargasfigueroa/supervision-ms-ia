@@ -9,6 +9,7 @@ from decimal import Decimal
 from ia.comun.tiempo import Reloj
 from ia.reportes.aplicacion.lecturas import (
     CobroEmitidoLeido,
+    CobroPagadoLeido,
     MovimientoLeido,
     ObraLeida,
     PlanillaAprobadaLeida,
@@ -26,6 +27,15 @@ class ObraNoRegistrada(Exception):
     def __init__(self, obra_id: str) -> None:
         super().__init__(f"La obra {obra_id} todavía no está en la base de reportes.")
         self.obra_id = obra_id
+
+
+class CobroNoRegistrado(Exception):
+    """El cobro todavía no está en la base de reportes (`CobroPagado` llegó antes que `CobroEmitido`): el evento falla
+    y se reintenta (201)."""
+
+    def __init__(self, cobro_id: str) -> None:
+        super().__init__(f"El cobro {cobro_id} todavía no está en la base de reportes.")
+        self.cobro_id = cobro_id
 
 
 class Proyecciones:
@@ -107,6 +117,11 @@ class Proyecciones:
             ),
             self._reloj.ahora(),
         )
+
+    async def cobro_pagado(self, repo: RepositorioReportes, pago: CobroPagadoLeido) -> None:
+        """201: `PAGADO` y `pagado_en`. Sin el cobro en `rpt_cobro`, falla y se reintenta."""
+        if not await repo.marcar_pagado(pago.cobro_id, pago.pagado_en, self._reloj.ahora()):
+            raise CobroNoRegistrado(pago.cobro_id)
 
     async def movimiento_registrado(self, repo: RepositorioReportes, movimiento: MovimientoLeido) -> bool:
         """Solo si el movimiento se insertó (no estaba) y es `SALIDA`, suma en el consumo. `True` si se insertó."""

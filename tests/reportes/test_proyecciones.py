@@ -1,4 +1,4 @@
-"""Proyecciones de los 6 eventos con PostgreSQL real (consumidor + inbox + caso de uso + SQL)."""
+"""Proyecciones de los 7 eventos con PostgreSQL real (consumidor + inbox + caso de uso + SQL)."""
 
 import asyncio
 import json
@@ -20,6 +20,7 @@ from apoyo.eventos import (
     RESIDENTE_1,
     Eventos,
     cobro_emitido_101,
+    cobro_pagado_101,
     fila,
     filas,
     movimiento,
@@ -192,6 +193,81 @@ async def test_cobro_emitido_vencido_y_emision_en_hora_de_la_paz(motor: AsyncEng
     assert cobro["obra_id"] is None  # llega con PlanillaAprobada
 
 
+# CobroPagado (201)
+
+
+async def test_cobro_pagado_deja_el_cobro_pagado_con_su_fecha(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("ObraRegistrada", obra_registrada())
+    await eventos.publicar("PlanillaAprobada", planilla_aprobada_101())
+    await eventos.publicar("CobroEmitido", cobro_emitido_101(), ocurrido_en="2026-09-18T14:00:00Z")
+    assert (await fila(motor, rpt_cobro, cobro_id=COBRO_101))["estado"] == "VENCIDO"
+
+    await eventos.publicar("CobroPagado", {**cobro_pagado_101(), "campoNuevo": "se ignora"})
+
+    cobro = await fila(motor, rpt_cobro, cobro_id=COBRO_101)
+    assert cobro["estado"] == "PAGADO"
+    assert cobro["pagado_en"] == date(2026, 10, 27)
+    assert cobro["numero"] == "COB-2026-0001"
+    assert cobro["monto"] == Decimal("290134.80")
+    assert eventos.canal.publicados == []
+    assert "CobroPagado" in {f["tipo"] for f in await filas(motor, evento_aplicado)}
+
+
+async def test_cobro_pagado_repetido_se_aplica_una_vez_y_no_cambia_la_fecha(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroEmitido", cobro_emitido_101(vence_en="2026-11-20"), ocurrido_en="2026-10-21T15:00:00Z")
+    id_evento = await eventos.publicar("CobroPagado", cobro_pagado_101())
+    await eventos.publicar("CobroPagado", cobro_pagado_101(), id_=id_evento)
+    assert len(await filas(motor, evento_aplicado, evento_id=id_evento)) == 1
+
+    # Otro aviso del mismo pago (otro id) no cambia nada: un PAGADO no cambia más.
+    await eventos.publicar("CobroPagado", cobro_pagado_101(pagado_en="2026-10-28"))
+    cobro = await fila(motor, rpt_cobro, cobro_id=COBRO_101)
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+    assert eventos.canal.publicados == []
+
+
+async def test_cobro_pagado_sin_cobro_emitido_previo_se_reintenta_y_luego_se_aplica(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroPagado", cobro_pagado_101())
+    primero = eventos.canal.publicados[-1]
+    assert primero.cola == "ia"
+    assert primero.encabezados["x-intentos"] == 1
+    assert "CobroNoRegistrado" in primero.encabezados["x-error"]
+    assert primero.encabezados["x-clave-origen"] == "evento.finanzas.CobroPagado"
+    assert await filas(motor, rpt_cobro) == []
+    assert await filas(motor, evento_aplicado) == []
+
+    await eventos.publicar("CobroEmitido", cobro_emitido_101(vence_en="2026-11-20"), ocurrido_en="2026-10-21T15:00:00Z")
+    await eventos.consumidor.procesar(eventos.canal.reentregar(primero), eventos.canal)
+    cobro = await fila(motor, rpt_cobro, cobro_id=COBRO_101)
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+
+
+async def test_cobro_pagado_sin_cobro_al_tercer_fallo_va_a_fallidos(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("CobroPagado", cobro_pagado_101())
+    for _ in range(2):
+        await eventos.consumidor.procesar(eventos.canal.reentregar(eventos.canal.publicados[-1]), eventos.canal)
+    ultimo = eventos.canal.publicados[-1]
+    assert ultimo.cola == "plataforma.fallidos"
+    assert ultimo.encabezados["x-intentos"] == 3
+    assert ultimo.encabezados["x-cola-origen"] == "ia"
+
+
+async def test_cobro_emitido_tardio_no_vuelve_a_pendiente_un_pagado(motor: AsyncEngine) -> None:
+    eventos = Eventos(motor)
+    await eventos.publicar("ObraRegistrada", obra_registrada())
+    await eventos.publicar("PlanillaAprobada", planilla_aprobada_101())  # el cobro ya está en rpt_cobro (sin número)
+    await eventos.publicar("CobroPagado", cobro_pagado_101())
+    await eventos.publicar("CobroEmitido", cobro_emitido_101(vence_en="2026-11-20"), ocurrido_en="2026-10-21T15:00:00Z")
+    cobro = await fila(motor, rpt_cobro, cobro_id=COBRO_101)
+    assert (cobro["estado"], cobro["pagado_en"]) == ("PAGADO", date(2026, 10, 27))
+    assert cobro["numero"] == "COB-2026-0001"  # las columnas vacías sí se completan
+    assert cobro["vence_en"] == date(2026, 11, 20)
+
+
 async def test_planilla_observada_cuenta_y_guarda_el_ultimo_motivo(motor: AsyncEngine) -> None:
     eventos = Eventos(motor)
     datos = {"planillaId": PLANILLA_202, "obraId": OBRA_2, "motivo": "Primera observación.", "origen": "CLIENTE"}
@@ -272,8 +348,18 @@ async def test_mismo_evento_dos_veces_se_aplica_una_vez(motor: AsyncEngine) -> N
         ("MovimientoRegistrado", movimiento(partidaId=None)),
         ("MovimientoRegistrado", movimiento(tipo="AJUSTE")),
         ("CobroEmitido", {**cobro_emitido_101(), "venceEn": "mañana"}),
+        ("CobroPagado", {**cobro_pagado_101(), "pagadoEn": None}),
+        ("CobroPagado", {**cobro_pagado_101(), "pagadoEn": "28/04/2027"}),
     ],
-    ids=["obra-incompleta", "uuid-invalido", "salida-sin-partida", "tipo-desconocido", "fecha-invalida"],
+    ids=[
+        "obra-incompleta",
+        "uuid-invalido",
+        "salida-sin-partida",
+        "tipo-desconocido",
+        "fecha-invalida",
+        "pago-sin-fecha",
+        "pago-fecha-invalida",
+    ],
 )
 async def test_datos_incompletos_van_directo_a_fallidos(
     motor: AsyncEngine, tipo: str, datos: dict[str, object]

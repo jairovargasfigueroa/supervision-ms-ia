@@ -52,6 +52,14 @@ class CobroEmitidoLeido:
 
 
 @dataclass(frozen=True)
+class CobroPagadoLeido:
+    """`CobroPagado` (201): solo lo que usa la proyección."""
+
+    cobro_id: str
+    pagado_en: date
+
+
+@dataclass(frozen=True)
 class MovimientoLeido:
     movimiento_id: str
     obra_id: str
@@ -106,3 +114,5 @@ class CobroCargado:
     emitido_en: date | None
     vence_en: date | None
     estado: str | None
+    pagado_en: date | None = None
+    """`pagadoEn` (201); null si no está pagado."""
