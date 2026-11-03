@@ -10,7 +10,7 @@
 | `ia-worker` | `uv run ia-worker` | Consume la cola `ia` (prefetch 10, `ack` manual), aplica las proyecciones, evalúa las salidas (403) y corre las tareas programadas |
 | `ia-carga-inicial` | `uv run ia-carga-inicial` | Llena el modelo de lectura con lo que ya existe, por REST (solo `GET`), y termina |
 
-Los tres salen de la misma imagen (`Dockerfile`).
+Los tres salen de la misma imagen (`Dockerfile`, 601): `docker run <imagen>` (o `… ia-api`) aplica `alembic upgrade head` y atiende en `IA_PUERTO`; `docker run <imagen> ia-worker` y `docker run <imagen> ia-carga-inicial` corren los otros dos. Toda la configuración entra por las variables `IA_*` (ninguna dirección ni secreto en la imagen); los registros van a la salida estándar (JSON con `IA_ENTORNO=produccion`, el valor de la imagen). Las conexiones usan TLS cuando su URL lo pide, y con `IA_CA_EXTRA` confían además en esa CA (ensayo local con la CA de Caddy).
 
 ## Casos de uso
 
