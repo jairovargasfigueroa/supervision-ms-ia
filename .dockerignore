@@ -1,11 +1,32 @@
+# Contexto de la imagen (601): solo entra lo que copia el Dockerfile. Nunca .env ni secretos.
 .git
-.venv
+.github
+.gitignore
+.gitattributes
 .env
-.env.*
-!.env.example
+.env*
+.venv
+.venv-*
+**/node_modules
+**/vendor
+**/target
+**/dist
+**/build
+**/coverage
+**/android
+**/datos
+**/*.log
 **/__pycache__
+**/*.py[cod]
 .pytest_cache
 .ruff_cache
 .mypy_cache
+.coverage
+htmlcov
+*.egg-info
+# Sin entrenamiento (301) ni ML de los notebooks y generadores (402, 403): la imagen solo carga modelos/.
+entrenamiento
+ml
 tests
 docs
+CLAUDE.md
