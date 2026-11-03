@@ -17,6 +17,7 @@ from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
 from ia.comun.tiempo import RelojSistema
+from ia.comun.tls import configurar_tls, verificar_http
 from ia.config import ConfiguracionInvalida, ConfiguracionWorker
 from ia.lenguaje.infraestructura.componer import crear_modelo_lenguaje
 from ia.mensajeria.consumidor import ConsumidorMensajes
@@ -61,7 +62,7 @@ async def principal(config: ConfiguracionWorker) -> None:
     programar_riesgo(programador, riesgo, config.zona_horaria)
 
     # 502: host de los agentes (modelo de lenguaje + cliente MCP con el token de ia-agentes).
-    http_token = httpx.AsyncClient()
+    http_token = httpx.AsyncClient(verify=verificar_http())
     agentes = crear_trabajo(config, mongo[config.mongo_db], crear_modelo_lenguaje(config), reloj, http_token)
     try:
         await agentes.recuperar()
@@ -96,6 +97,7 @@ def ejecutar() -> None:
     configurar_registros(json_=config.registros_json)
     try:
         config.comprobar_llm()
+        configurar_tls(config.ca_extra)
     except ConfiguracionInvalida as error:
         registro.error("ia-worker no arranca: %s", error)
         raise SystemExit(1) from error

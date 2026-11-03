@@ -13,6 +13,7 @@ from aio_pika.abc import (
     AbstractRobustConnection,
 )
 
+from ia.comun.tls import contexto_ssl
 from ia.mensajeria.consumidor import COLA_FALLIDOS, EXCHANGE, ConsumidorMensajes, MensajeRecibido
 
 PREFETCH = 10
@@ -89,7 +90,8 @@ class ConexionRabbit:
         """Se conecta (reintenta cada 5 s hasta lograrlo o hasta que se pida detener) y empieza a consumir."""
         while not detener.is_set():
             try:
-                self._conexion = await aio_pika.connect_robust(self._url)
+                # TLS con amqps:// en la URL; con IA_CA_EXTRA, confía también en esa CA (601).
+                self._conexion = await aio_pika.connect_robust(self._url, ssl_context=contexto_ssl())
                 break
             except Exception as error:
                 registro.warning(

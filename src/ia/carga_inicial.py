@@ -16,8 +16,9 @@ from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices, crear_cliente_mongo
 from ia.comun.registros import configurar_registros, id_peticion
+from ia.comun.tls import configurar_tls, verificar_http
 from ia.comun.tiempo import Reloj, RelojSistema
-from ia.config import ConfiguracionCarga
+from ia.config import ConfiguracionCarga, ConfiguracionInvalida
 from ia.reportes.aplicacion.carga_inicial import CargaEnCurso, CargaInicial
 from ia.reportes.dominio.valores import CARGA_TERMINADA
 from ia.reportes.infraestructura.clientes_rest import (
@@ -51,7 +52,7 @@ async def principal(
     reloj = reloj or RelojSistema(config.zona_horaria)
     motor = crear_motor(config.reportes_db_url, tamano_pool=2)
     try:
-        async with httpx.AsyncClient(transport=transporte) as http:
+        async with httpx.AsyncClient(transport=transporte, verify=verificar_http()) as http:
             token = TokenServicio(http, config.token_url, config.reportes_client_id, secreto)
 
             def cliente(nombre: str, url: str) -> ClienteServicio:
@@ -99,6 +100,11 @@ async def _predecir_todas(config: ConfiguracionCarga, motor: AsyncEngine, reloj:
 def ejecutar() -> None:
     config = ConfiguracionCarga()
     configurar_registros(json_=config.registros_json)
+    try:
+        configurar_tls(config.ca_extra)
+    except ConfiguracionInvalida as error:
+        registro.error("ia-carga-inicial no arranca: %s", error)
+        raise SystemExit(1) from error
     sys.exit(ejecutar_async(principal(config)))
 
 

@@ -30,6 +30,8 @@ os.environ["IA_MATERIALES_MCP_URL"] = "http://localhost:8082/mcp"
 os.environ["IA_FINANZAS_MCP_URL"] = "http://localhost:8083/mcp"
 os.environ["IA_PROPIO_MCP_URL"] = "http://localhost:8085/mcp"
 os.environ["IA_MCP_HOSTS_PERMITIDOS"] = "localhost:8085,127.0.0.1:8085"
+# TLS (601): sin CA adicional, aunque el .env local tenga una (las pruebas de tls la fijan explícita).
+os.environ["IA_CA_EXTRA"] = ""
 # Agentes (502): la programación diaria con sus valores por defecto.
 os.environ["IA_AGENTES_CRON"] = "0 6 * * *"
 os.environ["IA_AGENTES_PROGRAMADOS_ACTIVOS"] = "true"
