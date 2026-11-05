@@ -16,8 +16,8 @@ from ia.comun.base_datos import crear_motor
 from ia.comun.bucle import ejecutar_async
 from ia.comun.mongo import asegurar_indices, crear_cliente_mongo
 from ia.comun.registros import configurar_registros, id_peticion
-from ia.comun.tls import configurar_tls, verificar_http
 from ia.comun.tiempo import Reloj, RelojSistema
+from ia.comun.tls import configurar_tls, verificar_http
 from ia.config import ConfiguracionCarga, ConfiguracionInvalida
 from ia.reportes.aplicacion.carga_inicial import CargaEnCurso, CargaInicial
 from ia.reportes.dominio.valores import CARGA_TERMINADA

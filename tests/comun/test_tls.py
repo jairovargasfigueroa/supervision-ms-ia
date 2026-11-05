@@ -57,9 +57,7 @@ def _firmar(
         constructor = constructor.add_extension(
             x509.SubjectAlternativeName([x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]),
             critical=False,
-        ).add_extension(
-            x509.AuthorityKeyIdentifier.from_issuer_public_key(clave_emisor.public_key()), critical=False
-        )
+        ).add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(clave_emisor.public_key()), critical=False)
     return constructor.sign(clave_emisor, hashes.SHA256())
 
 
@@ -206,7 +204,9 @@ async def test_tls_crudo_confia_en_la_ca_extra(servidor_https: int, ca_local: tu
     _, escritor = await asyncio.open_connection("127.0.0.1", servidor_https, ssl=contexto)
     escritor.close()
     with pytest.raises(ssl.SSLCertVerificationError):
-        await asyncio.open_connection("127.0.0.1", servidor_https, ssl=ssl.create_default_context(cafile=certifi.where()))
+        await asyncio.open_connection(
+            "127.0.0.1", servidor_https, ssl=ssl.create_default_context(cafile=certifi.where())
+        )
 
 
 def test_motor_de_postgres_recibe_los_argumentos_tls(

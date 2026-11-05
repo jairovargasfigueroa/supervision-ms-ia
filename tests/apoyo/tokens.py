@@ -41,7 +41,8 @@ def token(
     *,
     emisor: str = EMISOR,
     audiencia: str = AUDIENCIA,
-    vence_en: int = 300,
+    # Una hora: varios módulos crean el token al importarse y la corrida completa puede pasar de 5 minutos (601).
+    vence_en: int = 3600,
     otra_clave: bool = False,
 ) -> str:
     ahora = int(time.time())
