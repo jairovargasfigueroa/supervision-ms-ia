@@ -26,11 +26,12 @@ jobs:
     name: Pruebas
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    # MongoDB como servicio del job (en el runner, el contenedor de Testcontainers con mongo:8.0 se cerraba al
-    # arrancar); las pruebas lo usan con IA_PRUEBAS_MONGO_URL (tests/apoyo/mongo.py)
+    # MongoDB como servicio del job, usado con IA_PRUEBAS_MONGO_URL (tests/apoyo/mongo.py). Es 7.0 y no la 8.0 del
+    # entorno: el kernel del runner (6.19+) hace que MongoDB 8.0 se niegue a arrancar (SERVER-125742; 7.0 no tiene ese
+    # problema). Las pruebas solo usan colecciones y aggregate, iguales en las dos versiones.
     services:
       mongo:
-        image: mongo:8.0
+        image: mongo:7.0
         ports:
           - 27017:27017
         options: >-
