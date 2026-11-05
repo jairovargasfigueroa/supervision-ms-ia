@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from ia.comun.registros import id_peticion
+from ia.comun.tls import verificar_http
 from ia.constructor_reportes.aplicacion.puertos import MaterialCatalogo, MaterialesNoDisponibles
 
 registro = logging.getLogger("ia.constructor_reportes")
@@ -52,7 +53,11 @@ class CatalogoMaterialesRest:
         materiales: dict[str, MaterialCatalogo] = {}
         try:
             async with httpx.AsyncClient(
-                base_url=self._url, timeout=TIEMPO_MAXIMO_S, transport=self._transporte, headers=encabezados
+                base_url=self._url,
+                timeout=TIEMPO_MAXIMO_S,
+                transport=self._transporte,
+                headers=encabezados,
+                verify=verificar_http(),
             ) as cliente:
                 for pagina in range(1, PAGINAS_MAXIMAS + 1):
                     respuesta = await cliente.get("/materiales", params={"pagina": pagina, "tamano": TAMANO_PAGINA})

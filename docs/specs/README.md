@@ -16,3 +16,4 @@ Una carpeta por funcionalidad: `NNN-nombre/` con su `tareas.md`. El número coin
 | 504 · Seguridad de la IA | Módulo `seguridad/` en 502 y 503, registro de las llamadas al modelo, prueba de arquitectura y `tests/seguridad/` (pruebas con entradas maliciosas) |
 | 201 · Cobranza automática | `CobroPagado` en la cola `ia` (`rpt_cobro` `PAGADO` y `pagado_en`; migración `0003`), carga inicial con `pagadoEn` y catálogo de cobros con `PAGADO` y «Fecha de pago» |
 | 301 · Detección de casco y chaleco | `entrenamiento/epp/`: dataset, recortes, clasificador MobileNetV3-Small con TensorFlow (entorno aparte) y exportación a TFLite para la app de obra |
+| 601 · Preparar el despliegue | Imagen de producción (`Dockerfile`, `docker/`, `.dockerignore`) con sus tres comandos, TLS por las URL con `IA_CA_EXTRA` opcional (`comun/tls.py`) y CI (`.github/workflows/ci.yml`, imagen en GHCR) |

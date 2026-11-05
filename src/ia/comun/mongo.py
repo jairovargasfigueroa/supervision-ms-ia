@@ -12,6 +12,8 @@ from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import PyMongoError
 
+from ia.comun.tls import opciones_mongo
+
 registro = logging.getLogger("ia.mongo")
 
 
@@ -41,8 +43,9 @@ def indices_registrados() -> tuple[IndiceMongo, ...]:
 
 
 def crear_cliente_mongo(url: str) -> AsyncMongoClient[dict[str, Any]]:
-    """El cliente no se conecta hasta la primera operación (arrancar sin MongoDB no falla)."""
-    return AsyncMongoClient(url, tz_aware=True, serverSelectionTimeoutMS=5000)
+    """El cliente no se conecta hasta la primera operación (arrancar sin MongoDB no falla). TLS por la URL; con
+    `IA_CA_EXTRA`, `tlsCAFile` (601)."""
+    return AsyncMongoClient(url, tz_aware=True, serverSelectionTimeoutMS=5000, **opciones_mongo(url))
 
 
 async def asegurar_indices(base: AsyncDatabase[dict[str, Any]]) -> int:

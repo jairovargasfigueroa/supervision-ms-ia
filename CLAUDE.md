@@ -4,7 +4,7 @@ Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los repo
 
 Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
 
-**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`), 201 (cobranza automática: `CobroPagado` deja el cobro `PAGADO` con su fecha de pago en `rpt_cobro`; catálogo de cobros con `PAGADO` y «Fecha de pago») y 301 (entrenamiento del clasificador de casco y chaleco que corre en la app de obra: `entrenamiento/epp/`, con su propio entorno y TensorFlow; el servicio no lo usa). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`), 201 (cobranza automática: `CobroPagado` deja el cobro `PAGADO` con su fecha de pago en `rpt_cobro`; catálogo de cobros con `PAGADO` y «Fecha de pago») y 301 (entrenamiento del clasificador de casco y chaleco que corre en la app de obra: `entrenamiento/epp/`, con su propio entorno y TensorFlow; el servicio no lo usa) y 601 (imagen de producción con `Dockerfile` y `docker/`, TLS por las URL con `IA_CA_EXTRA` opcional y CI en `.github/workflows/ci.yml`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
 
 ## Stack
 
@@ -27,6 +27,7 @@ uv run ia-worker             # consumidor de la cola «ia» + tareas programadas
 uv run ia-carga-inicial      # carga inicial (una vez; código 0 si terminó bien)
 uv run pytest -q             # pruebas (Docker para Testcontainers)
 uv run ruff check . && uv run ruff format --check . && uv run mypy
+docker build -t supervision-ia .   # imagen de producción (601): ia-api por defecto, ia-worker, ia-carga-inicial
 ```
 
 Configuración local: copiar `.env.example` a `.env` y completar. **`.env` nunca se sube.** En Windows, psycopg async necesita el bucle *selector*: los tres comandos lo eligen solos (`ia.comun.bucle`).
@@ -58,6 +59,13 @@ Estructura exacta y librerías permitidas: `docs/estructura.md`.
 - En la capa 5 (`agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/`, `seguridad/`) solo `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` tocan SQL, y solo `atipicos_mongo.py` arma filtros de MongoDB para el catálogo (lo comprueba `tests/seguridad/test_arquitectura.py`).
 - No se registran tokens, encabezados `Authorization`, la clave del modelo, el secreto de `ia-agentes` ni el texto completo de los mensajes.
 - Las pruebas con entradas maliciosas (`tests/seguridad/`, catálogo S1–S18, G1–G14, M1–M6, K1–K2) corren con `uv run pytest` como las demás y deben pasar completas.
+
+### Imagen, TLS y CI (capa 6, 601)
+
+- **Una imagen, tres comandos** (`Dockerfile`, dos etapas: `construir` con uv y `final` solo con el entorno): `ia-api` (por defecto; `docker/entrada.sh` aplica antes `alembic upgrade head`), `ia-worker` e `ia-carga-inicial`. Usuario `10001` (no `root`), `IA_ENTORNO=produccion`, `HEALTHCHECK` con `docker/salud.py` (`GET /salud` si el proceso es `ia-api`). Lleva `modelos/`; nunca `entrenamiento/`, `ml/`, `tests/` ni `.env`.
+- La imagen no lleva direcciones ni secretos: todo entra por las variables `IA_*` al arrancar (las de `.env.example`).
+- **TLS por la URL** de cada conexión; con `IA_CA_EXTRA` (CA adicional en PEM) las conexiones TLS confían además en esa CA. Todas las conexiones salientes toman su TLS de `ia.comun.tls` (httpx, `httpx2` del cliente MCP, `PyJWKClient`, Ollama, aio-pika, pymongo y psycopg): una conexión nueva también.
+- CI (`.github/workflows/ci.yml`): en cada PR a `develop` o `main`, ruff, mypy y pytest, y `docker build` sin publicar; en *push* a `main`, publica `ghcr.io/jairovargasfigueroa/supervision-ms-ia` con `sha-<7>` y `main`. Sin secretos de la aplicación.
 
 ### Entrenamiento de casco y chaleco (capa 3, 301)
 

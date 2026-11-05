@@ -22,6 +22,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 from mcp_types import CallToolResult, TextContent
 
+from ia.comun.tls import verificar_http
 from ia.mcp.cliente.token import TokenAgentes, TokenNoDisponible
 
 registro = logging.getLogger("ia.mcp.cliente")
@@ -141,6 +142,7 @@ class ClienteMcp:
             headers={"Authorization": f"Bearer {token}", "X-Request-Id": self._request_id},
             timeout=self._tiempo_maximo_s,
             transport=self._transporte,
+            verify=verificar_http(),
             event_hooks={"response": [al_responder]},
         )
         # El SDK no cierra un cliente HTTP que se le pasa: se cierra aquí, al terminar la operación.

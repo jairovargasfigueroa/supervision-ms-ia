@@ -61,13 +61,19 @@ Tiempo medido el 31/10/2026 en la computadora del equipo (Intel Core i7-11370H, 
 
 ## Docker
 
-Una imagen, tres comandos (`ia-api` por defecto, `ia-worker`, `ia-carga-inicial`):
+Imagen de producción (601): una imagen, tres comandos. `ia-api` (por defecto) aplica `alembic upgrade head` y atiende en `IA_PUERTO` (8085); `ia-worker` e `ia-carga-inicial` se eligen con el comando. Corre con el usuario `10001`, trae `IA_ENTORNO=produccion` (registros JSON en la salida estándar, sin `/docs`) y un `HEALTHCHECK` (`GET /salud` en `ia-api`). Lleva `modelos/`; no lleva `entrenamiento/`, `ml/`, `tests/` ni `.env`.
 
 ```powershell
 docker build -t supervision-ia .
-docker run --env-file .env -p 8085:8085 supervision-ia
-docker run --env-file .env supervision-ia ia-carga-inicial
+# Toda la configuración por variables IA_* (las de .env.example). Desde el contenedor, la máquina es host.docker.internal.
+docker run --env-file mi-entorno.env -p 8085:8085 supervision-ia
+docker run --env-file mi-entorno.env supervision-ia ia-worker
+docker run --env-file mi-entorno.env supervision-ia ia-carga-inicial
 ```
+
+El TLS lo pide la URL de cada conexión (`https://`, `amqps://`, `tls=true` en MongoDB, `sslmode=require|verify-ca|verify-full` en PostgreSQL). Para confiar además en una CA propia (la de Caddy en el ensayo local), móntala y apúntala con `IA_CA_EXTRA`: `-v ./ca.pem:/certificados/ca.pem:ro -e IA_CA_EXTRA=/certificados/ca.pem`.
+
+El CI (`.github/workflows/ci.yml`) corre ruff, mypy y pytest en cada PR a `develop` o `main` y construye la imagen sin publicarla; con cada *push* a `main` la publica en `ghcr.io/jairovargasfigueroa/supervision-ms-ia` con las etiquetas `sha-<7>` y `main`.
 
 ## Prueba manual con el modelo real (capa 5)
 

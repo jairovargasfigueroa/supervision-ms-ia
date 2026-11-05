@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 from ollama import AsyncClient, ChatResponse, ResponseError
 
+from ia.comun.tls import contexto_ssl
 from ia.lenguaje.aplicacion.puerto import LlmNoDisponible, LlmTiempoAgotado, SalidaNoValida, registrar_llamada
 from ia.lenguaje.dominio.mensajes import (
     DefinicionHerramienta,
@@ -36,6 +37,9 @@ class ModeloOllama:
         """`transporte`: solo en las pruebas (transporte HTTP simulado de `httpx`)."""
         self._modelo = modelo
         extra: dict[str, Any] = {} if transporte is None else {"transport": transporte}
+        # 601: Ollama por https:// con IA_CA_EXTRA confía también en esa CA (el cliente es httpx).
+        if (contexto := contexto_ssl()) is not None:
+            extra["verify"] = contexto
         self._cliente = AsyncClient(host=url, **extra)
 
     @property

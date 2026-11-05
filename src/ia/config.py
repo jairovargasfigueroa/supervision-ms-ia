@@ -21,6 +21,10 @@ class Configuracion(BaseSettings):
     entorno: Literal["desarrollo", "produccion"] = "desarrollo"
     puerto: int = 8085
 
+    # 601: CA adicional en PEM para las conexiones TLS (ensayo local con la CA de Caddy). Vacía: solo las públicas.
+    # El TLS lo pide la URL de cada conexión (ia.comun.tls).
+    ca_extra: str | None = None
+
     reportes_db_url: str = "postgresql+psycopg://ia:ia@localhost:5433/reportes_db"
     mongo_url: str = "mongodb://localhost:27017"
     mongo_db: str = "ia_db"
