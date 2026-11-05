@@ -1,0 +1,101 @@
+# 601 · CI del servicio de IA (docs/specs/601-contenedores-ci/ de supervision-docs). En cada pull request hacia develop
+# o main: ruff, mypy y pytest (las de integración con Testcontainers en el Docker del runner) y la imagen sin publicar.
+# En cada push a main (un release): además publica la imagen en GHCR con las etiquetas sha-<7 caracteres> y main.
+# Solo usa el GITHUB_TOKEN.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGEN: ghcr.io/jairovargasfigueroa/supervision-ms-ia
+
+jobs:
+  prueba:
+    name: Pruebas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # MongoDB como servicio del job, usado con IA_PRUEBAS_MONGO_URL (tests/apoyo/mongo.py). Es 7.0 y no la 8.0 del
+    # entorno: el kernel del runner (6.19+) hace que MongoDB 8.0 se niegue a arrancar (SERVER-125742; 7.0 no tiene ese
+    # problema). Las pruebas solo usan colecciones y aggregate, iguales en las dos versiones.
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # setup-uv no publica etiqueta de versión mayor: versión completa. uv 0.13.1, el mismo del Dockerfile.
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.13.1'
+          python-version: '3.12'
+          enable-cache: true
+
+      # Con el grupo dev. nvidia-nccl-cu13 (XGBoost en Linux) solo sirve para entrenar con GPU: no se instala.
+      - name: uv sync --frozen
+        run: uv sync --frozen --no-install-package nvidia-nccl-cu13
+
+      - name: ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: ruff format --check
+        run: uv run --no-sync ruff format --check .
+
+      - name: mypy
+        run: uv run --no-sync mypy
+
+      # Todas las pruebas; las de PostgreSQL levantan su contenedor con Testcontainers y las de MongoDB usan el servicio
+      - name: pytest
+        env:
+          IA_PRUEBAS_MONGO_URL: mongodb://localhost:27017
+        run: uv run --no-sync pytest -q
+
+  imagen:
+    name: Imagen
+    needs: prueba
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Etiquetas
+        id: etiquetas
+        run: echo "lista=${IMAGEN}:sha-${GITHUB_SHA::7},${IMAGEN}:main" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Iniciar sesión en GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # En un PR solo construye (sin push); en main construye y publica
+      - name: Construir y publicar
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.etiquetas.outputs.lista }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

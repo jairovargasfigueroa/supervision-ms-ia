@@ -17,6 +17,7 @@ from ia.comun.bucle import ejecutar_async
 from ia.comun.http import instalar_http
 from ia.comun.mongo import asegurar_indices_al_arrancar, crear_cliente_mongo
 from ia.comun.registros import configurar_registros
+from ia.comun.tls import configurar_tls
 from ia.config import Configuracion, ConfiguracionInvalida
 from ia.constructor_reportes.aplicacion.puertos import CatalogoMateriales
 from ia.constructor_reportes.infraestructura.materiales_rest import CatalogoMaterialesRest
@@ -111,6 +112,7 @@ def ejecutar() -> None:
     configurar_registros(json_=config.registros_json)
     try:
         config.comprobar_llm()
+        configurar_tls(config.ca_extra)
     except ConfiguracionInvalida as error:
         registro.error("ia-api no arranca: %s", error)
         raise SystemExit(1) from error

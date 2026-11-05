@@ -16,9 +16,13 @@ def _url() -> str:
     url = config.get_main_option("sqlalchemy.url")
     if url:
         return url
+    from ia.comun.tls import configurar_tls
     from ia.config import Configuracion
 
-    return Configuracion().reportes_db_url
+    configuracion = Configuracion()
+    # 601: TLS por sslmode en la URL; con IA_CA_EXTRA, la conexión confía también en esa CA.
+    configurar_tls(configuracion.ca_extra)
+    return configuracion.reportes_db_url
 
 
 def run_migrations_offline() -> None:
@@ -28,7 +32,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    motor = create_engine(_url(), poolclass=pool.NullPool)
+    from ia.comun.tls import argumentos_postgres
+
+    url = _url()
+    motor = create_engine(url, poolclass=pool.NullPool, connect_args=argumentos_postgres(url))
     with motor.connect() as conexion:
         context.configure(connection=conexion)
         with context.begin_transaction():

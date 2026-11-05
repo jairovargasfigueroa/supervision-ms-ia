@@ -13,7 +13,12 @@ Python 3.12 con `uv`. `fastapi` + `uvicorn`, `pydantic` 2 + `pydantic-settings` 
 ## Árbol (DDD + hexagonal ligera por módulo)
 
 ```
-pyproject.toml · uv.lock · .python-version · .env.example · Dockerfile · alembic.ini
+pyproject.toml · uv.lock · .python-version · .env.example · alembic.ini
+Dockerfile · .dockerignore        (601) imagen de producción: etapas construir (uv) y final (entorno, migraciones, modelos)
+docker/
+  entrada.sh                      ENTRYPOINT: con «ia-api» aplica antes «alembic upgrade head»; después exec del comando
+  salud.py                        HEALTHCHECK: GET /salud si el proceso es ia-api; con otro proceso, que esté vivo
+.github/workflows/ci.yml          (601) job prueba (ruff, mypy, pytest) y job imagen (build en PR; GHCR en main)
 migraciones/                      Alembic de reportes_db (env.py usa IA_REPORTES_DB_URL)
   versions/0001_inicial.py        rpt_obra_resumen, rpt_planilla, rpt_consumo_material, rpt_movimiento, rpt_cobro,
                                   evento_aplicado, carga_inicial
@@ -32,6 +37,8 @@ src/ia/
     tiempo.py                     Reloj (zona del negocio), RelojSistema, fecha_en_zona(), iso_utc()
     base_datos.py                 metadata de SQLAlchemy y crear_motor()
     mongo.py                      crear_cliente_mongo() y registro de índices (los agregan 402 y 403)
+    tls.py                        (601) CA adicional (IA_CA_EXTRA): configurar_tls(), contexto_ssl(), verificar_http(),
+                                  opciones_mongo(url), argumentos_postgres(url)
   auth/
     usuario.py                    Usuario, ROLES_ERP, roles_efectivos() (función pura según azp)
     token.py                      ValidadorToken (firma por JWKS, vencimiento, emisor, audiencia), errores
@@ -180,6 +187,14 @@ tests/                            espejo de src/ia (y tests/ml, tests/entrenamie
 - Eventos: el manejador de cada tipo lo registra `reportes` (`ia.reportes.infraestructura.eventos.registrar_manejadores`). Un módulo agrega pasos con `ConsumidorMensajes.agregar_previo(tipo, paso)` (corre **antes** de la transacción de PostgreSQL; idempotente por clave, por ejemplo MongoDB de la 403) y `agregar_posterior(tipo, paso)` (corre **después** de confirmarla y solo si el evento se aplicó, por ejemplo la predicción de la 402). Si un paso falla, el mensaje se reintenta como cualquier fallo.
 - Tareas programadas: agregar el trabajo en `ia.worker` (mismo `AsyncIOScheduler`, zona del negocio).
 - Índices de MongoDB: `ia.comun.mongo.registrar_indice(...)` en el módulo (con TTL o filtro parcial si hace falta); el worker y la API los aseguran al arrancar.
+
+## Imagen y TLS (capa 6, 601)
+
+- **Imagen:** `python:3.12-slim` en las dos etapas (el entorno `/app/.venv` se copia con la misma ruta y el mismo intérprete). `construir`: `uv sync --frozen --no-dev --no-editable` (el paquete `ia` queda instalado en el entorno; `src/` no se copia a la final). `final`: entorno, `alembic.ini`, `migraciones/`, `modelos/` y `docker/`; usuario `10001`; `EXPOSE 8085`; `IA_ENTORNO=produccion`. Sin `entrenamiento/`, `ml/`, `tests/`, `docs/` ni `.env*` (también fuera del contexto por `.dockerignore`).
+- No se instala `nvidia-nccl-cu13` (dependencia de XGBoost en Linux solo para entrenar en varias GPU): la predicción en CPU no la usa y ahorra unos cientos de MB. **(decisión técnica)**
+- Comandos: `ia-api` (por defecto), `ia-worker`, `ia-carga-inicial` y, si hace falta, `alembic …`. `docker/entrada.sh` solo agrega las migraciones antes de `ia-api`; Compose puede reemplazar el *entrypoint* (el de desarrollo de `infra` lo hace).
+- **TLS:** lo pide la URL de cada conexión (`https://`, `amqps://`, `tls=true` o `mongodb+srv://`, `sslmode=require|verify-ca|verify-full`). `ia.comun.tls` guarda la CA adicional (`IA_CA_EXTRA`, la fija cada comando al arrancar con `configurar_tls`; si el archivo no existe o no es PEM, el proceso no arranca) y entrega a cada cliente lo suyo: un `ssl.SSLContext` con las CA de `certifi` más la adicional (httpx, `httpx2` del cliente MCP, Ollama, `PyJWKClient`, aio-pika) o un archivo PEM con las dos (pymongo `tlsCAFile` y psycopg `sslrootcert`, solo si la URL pide TLS y no trae ya el suyo). Sin `IA_CA_EXTRA`, cada librería usa lo de siempre. El cliente de Anthropic no la usa (API pública).
+- **CI** (`.github/workflows/ci.yml`): `actions/checkout@v7`, `astral-sh/setup-uv@v10.3.0` (no publica etiqueta mayor; uv `0.13.1`, el mismo de la imagen), `docker/setup-buildx-action@v4`, `docker/login-action@v4` y `docker/build-push-action@v7` (caché `type=gha`). Job `prueba`: `uv sync --frozen` (sin `nvidia-nccl-cu13`) y `uv run --no-sync` de ruff, mypy y pytest. Job `imagen`: en PR construye sin publicar; en *push* a `main` publica `sha-<7>` y `main`.
 
 ## Entrenamiento de casco y chaleco (capa 3, 301)
 

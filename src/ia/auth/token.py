@@ -7,6 +7,7 @@ import jwt
 from jwt import PyJWKClient, PyJWKClientConnectionError, PyJWKClientError
 
 from ia.auth.usuario import Usuario, roles_efectivos
+from ia.comun.tls import contexto_ssl
 
 
 class TokenInvalido(Exception):
@@ -27,7 +28,10 @@ class ProveedorJwks:
     """Claves del realm con `PyJWKClient` (las guarda en caché y vuelve a pedirlas si llega un `kid` nuevo)."""
 
     def __init__(self, url_jwks: str, tiempo_maximo: float = 5.0) -> None:
-        self._cliente = PyJWKClient(url_jwks, cache_keys=True, lifespan=300, timeout=int(tiempo_maximo))
+        # 601: con IA_CA_EXTRA, el JWKS por HTTPS confía también en esa CA.
+        self._cliente = PyJWKClient(
+            url_jwks, cache_keys=True, lifespan=300, timeout=int(tiempo_maximo), ssl_context=contexto_ssl()
+        )
 
     def clave_para(self, token: str) -> Any:
         try:
