@@ -26,6 +26,18 @@ jobs:
     name: Pruebas
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    # MongoDB como servicio del job (en el runner, el contenedor de Testcontainers con mongo:8.0 se cerraba al
+    # arrancar); las pruebas lo usan con IA_PRUEBAS_MONGO_URL (tests/apoyo/mongo.py)
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v7
 
@@ -49,8 +61,10 @@ jobs:
       - name: mypy
         run: uv run --no-sync mypy
 
-      # Todas las pruebas; las de PostgreSQL y MongoDB levantan sus contenedores con Testcontainers
+      # Todas las pruebas; las de PostgreSQL levantan su contenedor con Testcontainers y las de MongoDB usan el servicio
       - name: pytest
+        env:
+          IA_PRUEBAS_MONGO_URL: mongodb://localhost:27017
         run: uv run --no-sync pytest -q
 
   imagen:
