@@ -1,0 +1,52 @@
+{
+  "version": "ca-1.0.0",
+  "fuente": "sintetica",
+  "entrenado_en": "2026-10-31T08:20:19Z",
+  "segundos": 1.63,
+  "variables": [
+    "log_cantidad",
+    "z_obra_material",
+    "razon_material",
+    "razon_periodo",
+    "hora_sin",
+    "hora_cos",
+    "fuera_horario",
+    "domingo",
+    "supera_stock",
+    "log_horas_anterior",
+    "salidas_dia",
+    "salidas_1h",
+    "salidas_3h"
+  ],
+  "modelo": {
+    "tipo": "IsolationForest",
+    "n_estimators": 200,
+    "contamination": 0.02,
+    "max_samples": 4096,
+    "random_state": 2026
+  },
+  "filas_entrenamiento": 39119,
+  "filas_prueba": 9730,
+  "anomalias_prueba": 224,
+  "marcadas_prueba": 202,
+  "sensibilidad": 0.71875,
+  "precision": 0.7970297029702971,
+  "auc_roc": 0.9713836749721981,
+  "proporcion_marcada": 0.020760534429599176,
+  "sensibilidad_por_tipo": {
+    "CANTIDAD": 0.8148148148148148,
+    "HORARIO": 0.9811320754716981,
+    "RAFAGA": 0.40540540540540543,
+    "STOCK": 0.813953488372093
+  },
+  "minimos": {
+    "sensibilidad": 0.7,
+    "precision": 0.5,
+    "auc_roc": 0.85,
+    "proporcion_marcada": [
+      0.01,
+      0.03
+    ]
+  },
+  "fallas": []
+}

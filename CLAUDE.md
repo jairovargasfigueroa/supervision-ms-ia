@@ -1,0 +1,89 @@
+# Servicio de IA
+
+Servicio de la capa 4 (y luego 3 y 5): arma el **modelo de lectura** de los reportes que cruzan servicios (`reportes_db`, tablas `rpt_*`) con los eventos de RabbitMQ y una carga inicial por REST (401); sobre él calcula el riesgo de retraso (402) y los consumos atípicos (403). En la capa 5 suma agentes y reportes por voz.
+
+Parte de la «Plataforma de supervisión de obras». Si existe `../../CLAUDE.md` (carpeta que agrupa todos los proyectos), léelo primero: tiene las reglas transversales, el plan y los contratos generales.
+
+**Estado:** 401 (base de reportes), 402 (riesgo de retraso con XGBoost; `ml/riesgo/` y `modelos/riesgo_retraso/`), 403 (consumos atípicos con Isolation Forest; `ml/atipicos/` y `modelos/consumos_atipicos/`; un atípico recalcula el riesgo de la obra), 503 (constructor de reportes: `lenguaje/` y `constructor_reportes/`), 501 (servidor MCP en `/mcp` y cliente MCP del host de los agentes: `mcp/`), 502 (tres agentes con herramientas MCP y decisión humana: `agentes/`) y 504 (IA segura: `seguridad/` y `tests/seguridad/`), 201 (cobranza automática: `CobroPagado` deja el cobro `PAGADO` con su fecha de pago en `rpt_cobro`; catálogo de cobros con `PAGADO` y «Fecha de pago») y 301 (entrenamiento del clasificador de casco y chaleco que corre en la app de obra: `entrenamiento/epp/`, con su propio entorno y TensorFlow; el servicio no lo usa) y 601 (imagen de producción con `Dockerfile` y `docker/`, TLS por las URL con `IA_CA_EXTRA` opcional y CI en `.github/workflows/ci.yml`). No implementes una funcionalidad sin su especificación aprobada (`docs/specs/` de la carpeta general y `docs/specs/NNN-nombre/tareas.md` de aquí).
+
+## Stack
+
+- Python 3.12 con `uv` (`pyproject.toml` + `uv.lock`) · paquete `src/ia`
+- FastAPI + Uvicorn (puerto `8085`, `IA_PUERTO`) · `pydantic` 2 + `pydantic-settings` (variables `IA_*`)
+- PostgreSQL `reportes_db` con SQLAlchemy 2 (Core, async) + `psycopg` 3; migraciones con Alembic (`migraciones/`)
+- MongoDB `ia_db` con `pymongo` (`AsyncMongoClient`; lo llenan 402, 403 y la capa 5)
+- Modelo de lenguaje (503): `ollama` 0.6 y `anthropic` 2 detrás del puerto `ModeloLenguaje`
+- MCP (501): SDK oficial `mcp` 2.3 (servidor `MCPServer` en `/mcp` de `ia-api`, solo `agente_ia`; cliente `Client` en `ia-worker` con `httpx2`)
+- RabbitMQ con `aio-pika` · token con `PyJWT` (`PyJWKClient`) · tareas programadas con `apscheduler` 3 · `httpx` (carga inicial)
+- Pruebas con `pytest` + `pytest-asyncio`; PostgreSQL real con Testcontainers · lint y formato con `ruff` · tipos con `mypy --strict`
+
+## Comandos
+
+```sh
+uv sync                      # entorno y dependencias (ver README para instalar uv y Python 3.12)
+uv run alembic upgrade head  # migraciones de reportes_db
+uv run ia-api                # API (GET /salud)
+uv run ia-worker             # consumidor de la cola «ia» + tareas programadas
+uv run ia-carga-inicial      # carga inicial (una vez; código 0 si terminó bien)
+uv run pytest -q             # pruebas (Docker para Testcontainers)
+uv run ruff check . && uv run ruff format --check . && uv run mypy
+docker build -t supervision-ia .   # imagen de producción (601): ia-api por defecto, ia-worker, ia-carga-inicial
+```
+
+Configuración local: copiar `.env.example` a `.env` y completar. **`.env` nunca se sube.** En Windows, psycopg async necesita el bucle *selector*: los tres comandos lo eligen solos (`ia.comun.bucle`).
+
+## Arquitectura: CQRS + DDD + hexagonal ligera por módulo
+
+- **CQRS solo para lo que cruza servicios:** cada servicio sigue escribiendo y leyendo lo suyo; aquí vive un modelo de lectura desnormalizado alimentado por **proyecciones** de eventos. Sin *event sourcing*: el modelo se puede rearmar con la carga inicial.
+- Un módulo por contexto (`reportes` en la 401; `riesgo` en la 402, `atipicos` en la 403, `lenguaje` y `constructor_reportes` en la 503 como módulos hermanos), cada uno con `dominio/` (reglas puras: sin FastAPI, SQLAlchemy, aio-pika ni httpx), `aplicacion/` (casos de uso y puertos) e `infraestructura/` (SQL, eventos, REST, web).
+- Puertos solo para lo externo que cambia: la base (`BaseReportes`, `RepositorioReportes`) y los clientes REST de la carga inicial (`FuenteObras`, `FuenteMateriales`, `FuenteFinanzas`). La cola se abstrae en `mensajeria` (`CanalMensajeria`).
+- Las proyecciones son casos de uso compartidos por los dos adaptadores de entrada (consumidor de eventos y carga inicial): las reglas son las mismas por los dos caminos.
+
+Estructura exacta y librerías permitidas: `docs/estructura.md`.
+
+## Reglas del proyecto
+
+- Nadie más escribe en `reportes_db`, y este servicio no lee las bases de otros: escucha eventos y, solo en la carga inicial, hace `GET` a endpoints que ya existen con el token de `ia-reportes`.
+- Cada evento se aplica en **una transacción** que inserta `evento_aplicado` (inbox) y actualiza las `rpt_*`; cada escritura es idempotente por fila (`INSERT … ON CONFLICT`).
+- `PlanillaAprobada`, `PlanillaObservada` y la carga de cada obra bloquean antes la fila de la obra (`SELECT … FOR UPDATE`); el avance se recalcula desde `rpt_planilla`, nunca se suma.
+- El secreto de `ia-reportes` solo lo lee el comando de carga inicial (nunca `ia-api` ni `ia-worker`).
+- El secreto de `ia-agentes` (`IA_AGENTES_CLIENT_SECRET`) solo lo lee `ia-worker` (`ConfiguracionWorker`). `/mcp` acepta solo `agente_ia` en un token del cliente `ia-agentes` (`azp`); las rutas REST nunca lo aceptan.
+- La capa 4 (`reportes`, `riesgo`, `atipicos`) no usa modelos de lenguaje. Desde la capa 5, el modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) se usa solo por el puerto `ModeloLenguaje` (`src/ia/lenguaje/`) y nunca escribe SQL: el constructor de reportes (503) valida su receta contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados, con el usuario de solo lectura `ia_reportes_lector`.
+- `IA_ANTHROPIC_API_KEY` es un secreto: solo en `.env` o en el gestor de secretos (vacía en `.env.example`).
+
+### IA segura (capa 5, 504)
+
+- El modelo nunca escribe SQL ni filtros de base de datos ni ejecuta acciones: entrega una receta (503) o un reporte con sugerencias de una lista (502) que el código valida; el SQL lo arma el código con nombres del catálogo y valores enlazados.
+- Todo dato externo que llega al modelo (pregunta, resultados de herramientas, datos de reportes) pasa por `como_dato` (`src/ia/seguridad/delimitar.py`: delimitado y con `<` y `>` escapados); todo mensaje de sistema lleva `REGLAS_COMUNES` (`mensaje_sistema`); todo texto del modelo que se guarda o se muestra pasa por `texto_seguro`.
+- Toda salida del modelo se valida con esquema estricto (Pydantic, `extra="forbid"`) y listas permitidas antes de usarse, con cualquier proveedor.
+- En la capa 5 (`agentes/`, `constructor_reportes/`, `lenguaje/`, `mcp/`, `seguridad/`) solo `constructor_reportes/infraestructura/constructor_sql.py` y `ejecutor_sql.py` tocan SQL, y solo `atipicos_mongo.py` arma filtros de MongoDB para el catálogo (lo comprueba `tests/seguridad/test_arquitectura.py`).
+- No se registran tokens, encabezados `Authorization`, la clave del modelo, el secreto de `ia-agentes` ni el texto completo de los mensajes.
+- Las pruebas con entradas maliciosas (`tests/seguridad/`, catálogo S1–S18, G1–G14, M1–M6, K1–K2) corren con `uv run pytest` como las demás y deben pasar completas.
+
+### Imagen, TLS y CI (capa 6, 601)
+
+- **Una imagen, tres comandos** (`Dockerfile`, dos etapas: `construir` con uv y `final` solo con el entorno): `ia-api` (por defecto; `docker/entrada.sh` aplica antes `alembic upgrade head`), `ia-worker` e `ia-carga-inicial`. Usuario `10001` (no `root`), `IA_ENTORNO=produccion`, `HEALTHCHECK` con `docker/salud.py` (`GET /salud` si el proceso es `ia-api`). Lleva `modelos/`; nunca `entrenamiento/`, `ml/`, `tests/` ni `.env`.
+- La imagen no lleva direcciones ni secretos: todo entra por las variables `IA_*` al arrancar (las de `.env.example`).
+- **TLS por la URL** de cada conexión; con `IA_CA_EXTRA` (CA adicional en PEM) las conexiones TLS confían además en esa CA. Todas las conexiones salientes toman su TLS de `ia.comun.tls` (httpx, `httpx2` del cliente MCP, `PyJWKClient`, Ollama, aio-pika, pymongo y psycopg): una conexión nueva también.
+- CI (`.github/workflows/ci.yml`): en cada PR a `develop` o `main`, ruff, mypy y pytest, y `docker build` sin publicar; en *push* a `main`, publica `ghcr.io/jairovargasfigueroa/supervision-ms-ia` con `sha-<7>` y `main`. Sin secretos de la aplicación.
+
+### Entrenamiento de casco y chaleco (capa 3, 301)
+
+- `entrenamiento/epp/` tiene su **propio entorno** (`entrenamiento/epp/.venv` con `requirements-entrenamiento.txt`: TensorFlow 2.21 y Keras 3). Nunca se agrega TensorFlow, Keras ni Pillow al `pyproject.toml` del servicio.
+- El modelo no lo carga el servicio: `salida/clasificador_epp.tflite` y `salida/epp.json` se copian a `mobile/app-obra/assets/modelos/` y corren en el celular.
+- Solo se versionan el código, el notebook (con sus salidas), `salida/clasificador_epp.tflite`, `salida/epp.json`, `salida/metricas.json` y la matriz de confusión en PNG. Nunca el dataset (`datos/`) ni `salida/saved_model/`.
+- Las reglas de etiquetado (`preparar_recortes.py`) son funciones puras probadas con `uv run pytest` (`tests/entrenamiento/`); las pruebas que necesitan TensorFlow se saltan en el entorno del servicio y corren en el de entrenamiento.
+
+## Documentación
+
+- `docs/estructura.md`: **librerías permitidas y estructura de carpetas y archivos. Obligatorio leerlo antes de escribir código.**
+- `docs/servicio.md`: responsabilidades, procesos y qué no hace.
+- `docs/datos.md`: tablas de `reportes_db` y colecciones de `ia_db`.
+- `docs/contratos.md`: lo que expone (REST), escucha (eventos) y consume (REST de la carga inicial).
+- `docs/specs/`: tareas por funcionalidad (requisitos y diseño en la carpeta general).
+
+## Commits
+
+Conventional Commits en español e imperativo (`feat(reportes): agrega la proyección de PlanillaAprobada`). Sin coautoría ni firmas de la IA.
+
+Git Flow: ramas `feat/`, `fix/`, `docs/`… desde `develop`, que entran por *pull request*; nunca hagas *push* a `main` ni a `develop` (están protegidas). Detalle y definición de terminado: `docs/flujo-trabajo.md` del repo `supervision-docs`.

@@ -1,0 +1,13 @@
+# Entorno de entrenamiento de la 301 (aparte del servicio: el servicio no instala TensorFlow).
+# Python 3.12. Instalar en entrenamiento/epp/.venv (ver README.md).
+tensorflow==2.21.*
+keras>=3.10,<4
+numpy>=2,<3
+pandas>=2
+scikit-learn>=1.5,<2
+matplotlib>=3.9
+pillow>=11
+# Ejecutar el notebook desde la terminal y correr las pruebas con TensorFlow.
+ipykernel>=7
+nbconvert>=7
+pytest>=8

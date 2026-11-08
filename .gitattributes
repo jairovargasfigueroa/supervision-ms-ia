@@ -1,0 +1,6 @@
+# Artefactos de modelos: binarios, sin conversión de fin de línea
+*.ubj binary
+*.joblib binary
+
+# Scripts de la imagen (601): siempre LF, también en una copia de Windows
+*.sh text eol=lf

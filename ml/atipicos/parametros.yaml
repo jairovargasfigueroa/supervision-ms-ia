@@ -1,0 +1,38 @@
+# Datos sintéticos de consumos de material (403, diseño «Datos sintéticos»). Decisión del equipo.
+# Lo que fija el diseño: semilla 2026; 60 obras, 25 materiales, 12 meses por obra; mediana log-uniforme entre 2 y
+# 200; factor de obra entre 0,5 y 2; 3 a 15 salidas por semana; LogNormal con sigma 0,35; lunes a sábado;
+# hora Normal(10; 2,5) recortada a 07:00–18:00; supera_stock con probabilidad 0,01; 2 % de anomalías de 4 tipos.
+# El resto (materiales por obra, meses activos, calendario) completa esos números para llegar a ≈ 50 000 salidas.
+
+semilla: 2026
+zona_horaria: America/La_Paz
+
+obras: 60
+materiales: 25
+meses_por_obra: 12
+# Cada obra empieza el día 1 de uno de estos 12 meses (al azar): las obras quedan escalonadas.
+primer_mes_inicio: "2025-01"
+meses_inicio_posibles: 12
+# Cada obra usa algunos de los 25 materiales, cada uno durante unos meses seguidos dentro de sus 12 meses.
+materiales_por_obra: 7
+meses_activo_material: [2, 4]
+
+mediana_material: [2.0, 200.0]   # log-uniforme
+factor_obra: [0.5, 2.0]          # uniforme
+salidas_por_semana: [3, 15]      # enteros, ambos incluidos, por material activo
+sigma_cantidad: 0.35             # LogNormal(ln(mediana_obra), sigma)
+hora_media: 10.0
+hora_desvio: 2.5
+hora_minima: 7.0                 # 07:00
+hora_maxima: 18.0                # 18:00
+prob_supera_stock: 0.01
+
+anomalias:
+  proporcion: 0.02               # de todas las salidas (incluidas las de las ráfagas)
+  # Los 4 tipos en partes iguales.
+  cantidad_factor: [4.0, 10.0]   # CANTIDAD: cantidad × 4 a 10
+  noche_desde: 21.0              # HORARIO: entre las 21:00 y las 05:00 (la mitad) o en domingo (la otra mitad)
+  noche_horas: 8.0
+  rafaga_salidas: [3, 6]         # RAFAGA: de 3 a 6 salidas del mismo material en una hora
+  rafaga_minutos: 60
+  stock_factor: [2.0, 4.0]       # STOCK: supera_stock con cantidad × 2 o más

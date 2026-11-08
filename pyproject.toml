@@ -1,0 +1,99 @@
+[project]
+name = "supervision-ms-ia"
+version = "1.0.0"
+description = "Servicio de IA de la plataforma de supervisión de obras: modelo de lectura para reportes (CQRS), predicciones y agentes."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "httpx>=0.28",
+    "sqlalchemy[asyncio]>=2",
+    "psycopg[binary]>=3",
+    "alembic>=1",
+    "pymongo>=4",
+    "aio-pika>=10",
+    "pyjwt[crypto]>=2",
+    "apscheduler>=3,<4",
+    # zoneinfo necesita la base de zonas horarias en Windows y en imágenes mínimas.
+    "tzdata",
+    # ML de la capa 4 (402: XGBoost; 403: Isolation Forest, modelo.joblib).
+    "xgboost>=3",
+    "scikit-learn>=1",
+    "pandas>=3",
+    "numpy>=2",
+    "pyyaml>=6",
+    "joblib>=1",
+    "ollama>=0.6,<0.7",
+    "anthropic>=2,<3",
+    # MCP (501): SDK oficial (servidor y cliente); httpx2 es su cliente HTTP (encabezados del cliente MCP).
+    "mcp>=2.3,<2.4",
+    "httpx2>=2.16,<3",
+]
+
+[project.scripts]
+ia-api = "ia.main:ejecutar"
+ia-worker = "ia.worker:ejecutar"
+ia-carga-inicial = "ia.carga_inicial:ejecutar"
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1",
+    "testcontainers[postgres]>=4.15",
+    "ruff",
+    "mypy",
+]
+notebook = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+# El grupo «notebook» (ml/riesgo/exploracion.ipynb) se instala aparte: uv sync --group notebook
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+module-name = "ia"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests", "."]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = ["integracion: necesita PostgreSQL real (Testcontainers o IA_PRUEBAS_DB_URL)"]
+# Starlette recomienda httpx2 para su cliente de pruebas; la spec fija httpx.
+filterwarnings = ["ignore:Using .httpx. with .starlette.testclient. is deprecated"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["ia", "ml", "entrenamiento"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["aio_pika.*", "apscheduler.*", "testcontainers.*", "sklearn.*", "joblib.*", "yaml.*", "pandas.*"]
+ignore_missing_imports = true
+
+# Entrenamiento de la 301: TensorFlow, Keras, Pillow y Matplotlib solo están en entrenamiento/epp/.venv.
+[[tool.mypy.overrides]]
+module = ["tensorflow.*", "keras.*", "PIL.*", "matplotlib.*"]
+ignore_missing_imports = true

@@ -1,0 +1,22 @@
+{
+  "version": "1.0.0",
+  "versionModelo": "epp-1.0.0",
+  "entrada": {
+    "alto": 224,
+    "ancho": 224,
+    "canales": 3,
+    "tipo": "float32",
+    "rango": [
+      0,
+      255
+    ]
+  },
+  "salidas": [
+    "casco",
+    "chaleco"
+  ],
+  "umbrales": {
+    "casco": 0.38,
+    "chaleco": 0.21
+  }
+}
