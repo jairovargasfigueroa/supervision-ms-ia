@@ -7,7 +7,10 @@ from ia.agentes.dominio.definiciones import (
     AGENTES,
     AGENTES_DEL_RESIDENTE,
     CONSULTAR_REPORTE,
+    CONSUMO_VS_PREVISTO,
     CONTROL_COBROS,
+    HERRAMIENTAS_CONSUMO_VS_PREVISTO,
+    PERIODO_ACTUAL,
     texto_accion,
 )
 from ia.constructor_reportes.dominio.receta import CONJUNTOS
@@ -51,8 +54,14 @@ def test_herramientas_por_agente_segun_el_diseno() -> None:
 def test_pasos_iniciales_son_herramientas_del_agente_con_argumentos_validos(agente: str) -> None:
     definicion = AGENTES[agente]
     for paso in definicion.pasos_iniciales:
-        assert paso.herramienta in definicion.herramientas
-        CONTRATO[paso.herramienta].entrada.model_validate(dict(paso.argumentos))
+        argumentos = {k: "2027-04" if v == PERIODO_ACTUAL else v for k, v in paso.argumentos.items()}
+        # 505: el paso compuesto llama avance_obra y consumos_partida con el periodo, para todas las obras
+        herramientas = (
+            HERRAMIENTAS_CONSUMO_VS_PREVISTO if paso.herramienta == CONSUMO_VS_PREVISTO else (paso.herramienta,)
+        )
+        for herramienta in herramientas:
+            assert herramienta in definicion.herramientas
+            CONTRATO[herramienta].entrada.model_validate(argumentos)
 
 
 def test_tipos_y_acciones_iguales_a_los_enums_del_gateway() -> None:

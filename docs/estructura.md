@@ -108,21 +108,28 @@ src/ia/
   lenguaje/                       (503; lo usa la 502) puerto del modelo de lenguaje
     dominio/mensajes.py           Mensaje (SISTEMA, USUARIO, ASISTENTE, HERRAMIENTA), DefinicionHerramienta,
                                   LlamadaHerramienta (id, nombre, argumentos), RespuestaModelo (texto, llamadas), Opciones
-    aplicacion/puerto.py          ModeloLenguaje (Protocol) y errores LlmNoDisponible, LlmTiempoAgotado, SalidaNoValida
+    aplicacion/puerto.py          ModeloLenguaje (Protocol) y errores LlmNoDisponible (reintentable), LlmTiempoAgotado,
+                                  SalidaNoValida
+    aplicacion/reintentos.py      ModeloConReintentos (505): 2 reintentos de fallas pasajeras, esperas de 1 y 3 s
     infraestructura/ollama.py     ModeloOllama (cliente `ollama`, AsyncClient)
     infraestructura/anthropic.py  ModeloAnthropic (SDK `anthropic`, AsyncAnthropic)
     infraestructura/esquemas.py   adaptar_esquema(esquema, proveedor): JSON Schema que acepta cada proveedor
-    infraestructura/componer.py   crear_modelo_lenguaje(config) según IA_LLM_PROVEEDOR
+    infraestructura/componer.py   crear_modelo_lenguaje(config) según IA_LLM_PROVEEDOR, envuelto en ModeloConReintentos
   constructor_reportes/           (503) catálogo → receta → validación → consulta parametrizada (REST y MCP)
     dominio/catalogo.py           conjuntos: columnas, filtros, dimensiones, medidas, valores por defecto, ejemplos
     dominio/receta.py             RecetaReporte (Pydantic, extra="forbid") y su JSON Schema
     dominio/validacion.py         validar_receta(receta, conjunto, modo) → RecetaValidada o lista de errores
     dominio/atajos.py             atajos: receta fija en función de «hoy»
     dominio/resultado.py          Columna, Resultado (filas como texto), totales para el resumen, plantilla
-    aplicacion/puertos.py         EjecutorConsultas, CatalogoMateriales, RepositorioConsultas, LimitadorConsultas
-    aplicacion/motor.py           MotorReportes.ejecutar(receta_validada, modo, directorio) → Resultado (REST y MCP)
-    aplicacion/interpretar.py     InterpretarPedido: texto → RecetaReporte (LLM)
-    aplicacion/consultar.py       ConsultarReporte: caso de uso de las personas (límite, interpretar, motor, resumen, guardar)
+    dominio/conversacion.py       (505) Conversacion, Turno, Duda: tope de 5 preguntas, 20 turnos, 30 min, opciones
+    aplicacion/puertos.py         EjecutorConsultas, CatalogoMateriales, RepositorioConsultas, LimitadorConsultas,
+                                  RepositorioConversaciones, CacheRecetas, NombresObras (505)
+    aplicacion/motor.py           MotorReportes.ejecutar(receta_validada, modo, directorio) → Resultado (REST y MCP);
+                                  buscar_duda: nombres que coinciden con varios o con ninguno (505)
+    aplicacion/interpretar.py     InterpretarPedido: conversación → RespuestaInterprete (RECETA, ACLARAR, NINGUNO) con
+                                  instrucciones y ejemplos fijos (LLM)
+    aplicacion/consultar.py       ConsultarReporte: caso de uso de las personas (límite, conversación, duda, caché,
+                                  interpretar con autocorrección, motor, resumen, guardar)
     infraestructura/expresiones.py     expresión de SQLAlchemy Core de cada columna, filtro, dimensión y medida (constantes)
     infraestructura/constructor_sql.py arma el select() de Core desde la receta validada (sin texto del usuario ni del modelo)
     infraestructura/ejecutor_sql.py    ejecuta con el usuario lector, READ ONLY y statement_timeout de 5 s
@@ -130,14 +137,17 @@ src/ia/
     infraestructura/materiales_rest.py GET /materiales de Materiales con el token del usuario (caché de 5 min)
     infraestructura/consultas_mongo.py ia_db.consulta_reporte
     infraestructura/limite_mongo.py    ia_db.limite_consulta
+    infraestructura/conversaciones_mongo.py ia_db.conversacion_reporte e ia_db.receta_cache con sus índices TTL (505)
     infraestructura/web.py             POST /consultas-reporte, GET /consultas-reporte, GET /catalogo-reportes
   agentes/                        (502) tres agentes, host MCP; usa lenguaje/ (503) y mcp/cliente/ (501)
     dominio/definiciones.py       los 3 agentes: misión, herramientas MCP, conjuntos de consultar_reporte, pasos
                                   iniciales, tipos de hallazgo y acciones con su texto (código, no configuración)
     dominio/reporte.py            ReporteAgente (Pydantic, extra="forbid"), JSON Schema por agente y validación adicional
+    dominio/consumo_previsto.py   (505) cruce del paso compuesto consumo_vs_previsto: excesos y salidas sin stock
     dominio/ejecucion.py          estados y entidades: Ejecucion, Paso, HallazgoGuardado, Sugerencia
     aplicacion/puertos.py         RepositorioEjecuciones, RepositorioSugerencias, ConectorMcp, ObrasDelResidente
-    aplicacion/ejecutor.py        EjecutorAgente: descubrimiento, pasos iniciales, bucle con conversar, límites, reporte
+    aplicacion/ejecutor.py        EjecutorAgente: descubrimiento, pasos iniciales ($periodo_actual y paso compuesto),
+                                  bucle con conversar, límites, reintento MCP, reporte con 3 intentos
     aplicacion/trabajo.py         cola (una a la vez), programación diaria sin repetir, recuperación al iniciar
     aplicacion/visibilidad.py     Alcance: agentes y obras que ve el usuario (residente: sus obras, sin CONTROL_COBROS)
     aplicacion/casos.py           ejecutar ahora, consultas con visibilidad, aprobar y rechazar
@@ -213,7 +223,7 @@ tests/                            espejo de src/ia (y tests/ml, tests/entrenamie
 
 ## Agentes (capa 5, 502)
 
-- El modelo de lenguaje decide qué consultar y redacta; el código controla qué herramientas existen para cada agente, los límites (8 llamadas, 6 vueltas, 150 s de bucle y 3 min en total), el esquema del reporte, las acciones y qué obras son válidas.
+- El modelo de lenguaje decide qué consultar y redacta; el código controla qué herramientas existen para cada agente, los límites (15 llamadas, 8 vueltas, 200 s de bucle y 4 min en total desde la 505), el esquema del reporte, las acciones y qué obras son válidas.
 - Variables (`ConfiguracionWorker`): `IA_AGENTES_CRON` (por defecto `0 6 * * *`, La Paz) e `IA_AGENTES_PROGRAMADOS_ACTIVOS` (`true`/`false`). El modelo de lenguaje y el cliente MCP ya vienen de la 503 y la 501.
 - La visibilidad del residente sale de `rpt_obra_resumen.residente_id` (lectura de `atipicos/infraestructura/obras_sql.py`, 401/403); `agentes/` no tiene SQL.
 

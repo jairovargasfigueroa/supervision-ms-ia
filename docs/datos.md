@@ -172,13 +172,40 @@ Cada consulta de reporte de las personas (`POST /consultas-reporte`), también l
 | resultado | string | `OK`, `NO_RECONOCIDA`, `RECETA_INVALIDA`, `ERROR` |
 | error_codigo | string | código del error si `ERROR` |
 | total_filas | int | |
+| conversacion_id | string | conversación a la que pertenece (505); nulo en las anteriores a la 505 |
 | proveedor_llm · modelo | string | `ollama` / `qwen3:8b`, `anthropic` / `claude-sonnet-5-5` |
 | duracion_ms | int | |
 | creada_en | date | |
 
+### conversacion_reporte (505)
+
+Estado de cada conversación del constructor de reportes (`POST /consultas-reporte` con o sin `conversacionId`). La escribe `ia-api`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string (uuid) | `conversacionId` |
+| usuario_id | string | `sub` del token: solo su dueño la continúa (otro usuario recibe `404 CONVERSACION_NO_ENCONTRADA`) |
+| turnos | array | `{rol: USUARIO\|ASISTENTE, texto, tipo: PEDIDO\|REPORTE\|ACLARACION\|NO_RECONOCIDO, en}`; se guardan los últimos 20 |
+| receta | objeto | última receta válida (la que ajustan los seguimientos); nula al empezar |
+| preguntas | int | aclaraciones hechas (tope 5) |
+| duda | objeto | pregunta del código pendiente: `{campo, termino, clase, opciones, receta}` (la receta que espera la respuesta); nula si no hay |
+| aceptados | array de string | términos que el usuario aceptó «tal cual» («Todos», «Ninguno»): no se vuelven a preguntar |
+| creada_en · actualizada_en | date | |
+| expira_en | date | +30 min en cada turno; índice TTL `ttl_conversacion_reporte` (`expireAfterSeconds: 0`) |
+
+### receta_cache (505)
+
+Receta validada por pedido: el primer turno de una conversación con el mismo texto (normalizado: sin mayúsculas, tildes ni espacios de más) el mismo día no vuelve a llamar al modelo.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| _id | string | SHA-256 de `texto normalizado | fecha de hoy (La Paz)` |
+| receta | objeto | la receta validada (con valores por defecto) |
+| expira_en | date | +24 h; índice TTL `ttl_receta_cache` (`expireAfterSeconds: 0`) |
+
 ### limite_consulta (503)
 
-Límite de 10 consultas de reporte por minuto por usuario (ventana fija de un minuto, decisión del equipo).
+Límite de consultas de reporte por minuto por usuario (ventana fija de un minuto, decisión del equipo): 20 desde la 505 (`IA_CONSULTAS_POR_MINUTO`), contando cada turno de una conversación.
 
 | Campo | Tipo | Notas |
 |---|---|---|
@@ -187,7 +214,7 @@ Límite de 10 consultas de reporte por minuto por usuario (ventana fija de un mi
 | cuenta | int | |
 | expira_en | date | fin del minuto + 2 min; índice TTL `ttl_limite_consulta_expira` (`expireAfterSeconds: 0`) |
 
-Cada pedido hace `find_one_and_update(_id, {$inc: {cuenta: 1}, $setOnInsert: {…}}, upsert)`: atómico, sirve con varios procesos de `ia-api`. Con `cuenta > 10` → `429 DEMASIADAS_CONSULTAS` con `Retry-After`.
+Cada pedido hace `find_one_and_update(_id, {$inc: {cuenta: 1}, $setOnInsert: {…}}, upsert)`: atómico, sirve con varios procesos de `ia-api`. Con `cuenta > 20` → `429 DEMASIADAS_CONSULTAS` con `Retry-After`.
 
 ### ejecucion_agente (502)
 

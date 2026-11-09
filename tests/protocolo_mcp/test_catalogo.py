@@ -62,7 +62,7 @@ def test_esquemas_de_obras_materiales_y_finanzas_segun_el_diseno() -> None:
         "buscar_diario": ({"obraId", "desde", "hasta", "texto", "limite"}, {"obraId"}),
         "planillas_estado": ({"obraId", "estados", "desdePeriodo", "limite"}, set()),
         "stock_obra": ({"obraId", "estados", "limite"}, set()),
-        "consumos_partida": ({"obraId", "periodo", "partidaId"}, {"obraId", "periodo"}),
+        "consumos_partida": ({"obraId", "periodo", "partidaId"}, {"periodo"}),  # 505: obraId opcional
         "cobros_por_vencer": ({"dias", "incluirVencidos", "obraId"}, set()),
     }
 
@@ -75,7 +75,7 @@ def test_desconocida_de_otro_servidor_o_con_otro_esquema_se_ignora(caplog: pytes
         _publicada("ajustar_stock", {"type": "object", "properties": {}}),
         _publicada("cobros_por_vencer", _esquema("cobros_por_vencer")),  # es de Finanzas
         _publicada("stock_obra", otro_esquema),
-        _publicada("consumos_partida", {**_esquema("consumos_partida"), "required": ["obraId"]}),
+        _publicada("consumos_partida", {**_esquema("consumos_partida"), "required": ["obraId", "periodo"]}),
     ]
     with caplog.at_level(logging.WARNING, logger="ia.mcp.cliente"):
         validas = aceptadas("materiales", publicadas)

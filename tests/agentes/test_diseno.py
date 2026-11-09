@@ -88,20 +88,20 @@ async def test_conjunto_ajeno_y_argumentos_invalidos_no_llaman_al_servidor(
     assert "COBROS, PLANILLAS" in resultado.contenido
 
 
-async def test_limite_de_8_llamadas(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+async def test_limite_de_15_llamadas(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
     veinte = [llamada("buscar_diario", obraId=O1) for _ in range(20)]
     modelo = ModeloSimulado(json_=[reporte_seguimiento()], conversacion=[veinte, veinte])
     async with entorno(ia_db, modelo) as e:
         ejecucion = await e.correr("SEGUIMIENTO_OBRAS")
         llamadas = e.llamadas()
     assert ejecucion.estado == TERMINADA, ejecucion.error
-    assert len(ejecucion.pasos) == 8
-    assert len(llamadas) == 8
+    assert len(ejecucion.pasos) == 15  # 505: 3 pasos iniciales + 12 de los 20 pedidos
+    assert len(llamadas) == 15
     assert len(modelo.llamadas_de("conversar")) == 1  # con el límite alcanzado pasa al reporte
     reporte = modelo.llamadas_de("generar_json")[0].mensajes
     resultados = [m for m in reporte if m.contenido.startswith("Resultado de buscar_diario")]
     assert len(resultados) == 20  # cada pedido tiene su respuesta (las que pasan el límite, con LIMITE_ALCANZADO)
-    assert sum("LIMITE_ALCANZADO" in m.contenido for m in resultados) == 15
+    assert sum("LIMITE_ALCANZADO" in m.contenido for m in resultados) == 8
 
 
 async def test_resultado_con_is_error_queda_como_paso_y_vuelve_al_modelo(ia_db: AsyncDatabase[dict[str, Any]]) -> None:

@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import Select, and_, func, select, true
+from sqlalchemy import Select, and_, func, or_, select, true
 from sqlalchemy.sql.elements import ColumnElement, Label
 
 from ia.constructor_reportes.aplicacion.puertos import ConsultaResuelta
@@ -26,6 +26,8 @@ _AGREGACIONES: dict[str, Callable[[ColumnElement[Any] | None], ColumnElement[Any
 }
 _BOOLEANOS = frozenset({"soloEnRiesgo", "soloSuperaStock"})
 """Filtros cuya expresión ya es la condición (valor `true`)."""
+_POR_NOMBRE = frozenset({"obra", "cliente", "material"})
+"""Filtros por nombre (505: `CONTIENE` o `EN`)."""
 ESCAPE = "\\"
 
 
@@ -72,13 +74,15 @@ def condiciones(consulta: ConsultaResuelta, filtros: Mapping[str, ColumnElement[
 def _condicion(f: FiltroValidado, expresion: ColumnElement[Any], consulta: ConsultaResuelta) -> ColumnElement[bool]:
     if f.campo in _BOOLEANOS:
         return expresion.is_(True)
-    if f.operador == "CONTIENE":
+    if f.campo in _POR_NOMBRE and f.operador in ("CONTIENE", "EN"):
+        # 505: «contiene» un texto o «es uno de» varios (cada uno por «contiene»). Clientes y materiales llegan ya
+        # resueltos a ids por el motor; las obras, por ILIKE con cada texto como valor enlazado.
         if f.campo == "cliente":
             return expresion.in_(list(consulta.ids_cliente or ()))
         if f.campo == "material":
             return expresion.in_(list(consulta.ids_material or ()))
-        assert isinstance(f.valor, str)
-        return expresion.ilike(patron_contiene(f.valor), escape=ESCAPE)
+        textos = list(f.valor) if isinstance(f.valor, tuple) else [str(f.valor)]
+        return or_(*(expresion.ilike(patron_contiene(t), escape=ESCAPE) for t in textos))
     if f.campo == "venceEnDias":
         assert isinstance(f.valor, int)
         # «Por vencer» = pendientes que vencen entre hoy y hoy + n (los PAGADO no, 201).

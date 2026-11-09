@@ -8,7 +8,7 @@ cliente se resuelven antes en `rpt_obra_resumen` (usuario lector).
 
 import logging
 from collections.abc import Sequence
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
@@ -117,11 +117,11 @@ class ConsultaAtipicosMongo:
             filtro["obra_id"] = {"$in": list(obra_ids)}
         zona = ZoneInfo(self._zona)
         for f in consulta.receta.filtros:
-            if f.campo == "material" and f.operador == "CONTIENE":
+            if f.campo == "material" and f.operador in ("CONTIENE", "EN"):
                 _y(filtro, "material_id", {"$in": list(consulta.ids_material or ())})
             elif f.campo == "fecha":
                 dia = f.valor
-                assert not isinstance(dia, str | bool | int | tuple)
+                assert isinstance(dia, date)
                 if f.operador == "DESDE":
                     _y(filtro, "registrado_en", {"$gte": datetime.combine(dia, time(), zona)})
                 else:

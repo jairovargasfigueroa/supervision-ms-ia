@@ -5,7 +5,7 @@ el modo REST), ejecuta la consulta parametrizada y devuelve las filas como texto
 """
 
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -16,9 +16,12 @@ from ia.constructor_reportes.aplicacion.puertos import (
     EjecutorConsultas,
     MaterialCatalogo,
     MaterialesNoDisponibles,
+    NombresObras,
+    ReportesNoDisponibles,
     ServicioNoDisponible,
 )
 from ia.constructor_reportes.dominio.catalogo import REST
+from ia.constructor_reportes.dominio.conversacion import parecidos
 from ia.constructor_reportes.dominio.resultado import (
     AVISO_CLIENTES,
     AVISO_MATERIALES,
@@ -27,7 +30,7 @@ from ia.constructor_reportes.dominio.resultado import (
     Resultado,
     valor_texto,
 )
-from ia.constructor_reportes.dominio.validacion import RecetaValidada
+from ia.constructor_reportes.dominio.validacion import FiltroValidado, RecetaValidada
 
 
 @dataclass(frozen=True)
@@ -44,10 +47,78 @@ def normalizar(texto: str) -> str:
     return "".join(c for c in descompuesto if not unicodedata.combining(c)).casefold().strip()
 
 
+@dataclass(frozen=True)
+class DudaNombre:
+    """505: un término de un filtro por nombre que coincide con varios nombres (`VARIOS`) o con ninguno, pero tiene
+    parecidos (`NINGUNO`)."""
+
+    campo: str
+    termino: str
+    clase: str
+    nombres: tuple[str, ...]
+
+
+VARIOS = "VARIOS"
+NINGUNO = "NINGUNO"
+NOMBRES_EN_DUDA = 5
+
+
 class MotorReportes:
-    def __init__(self, ejecutor: EjecutorConsultas, materiales: CatalogoMateriales | None = None) -> None:
+    def __init__(
+        self,
+        ejecutor: EjecutorConsultas,
+        materiales: CatalogoMateriales | None = None,
+        obras: NombresObras | None = None,
+    ) -> None:
         self._ejecutor = ejecutor
         self._materiales = materiales
+        self._obras = obras
+
+    async def buscar_duda(
+        self,
+        receta: RecetaValidada,
+        *,
+        directorio: Directorio | None = None,
+        token: str | None = None,
+        aceptados: Collection[str] = (),
+    ) -> DudaNombre | None:
+        """505: la primera duda de un filtro por nombre (`obra`, `cliente` o `material`, con `CONTIENE` o `EN`) cuyo
+        campo no está en la salida (si se agrupa o se muestra por él, varios nombres son lo esperado). Sin los nombres
+        disponibles (Materiales o la base caídos, sin directorio), no hay duda: el motor sigue como en la 503."""
+        if receta.modo != REST:
+            return None
+        salida = set(receta.claves_salida())
+        for campo in ("material", "obra", "cliente"):
+            filtros = [f for f in receta.filtros if f.campo == campo and f.operador in POR_NOMBRE]
+            if not filtros or campo in salida:
+                continue
+            nombres = await self._nombres(campo, directorio, token)
+            if not nombres:
+                continue
+            for f in filtros:
+                for termino in textos_del_filtro(f):
+                    if normalizar(termino) in aceptados:
+                        continue
+                    duda = _duda(campo, termino, nombres)
+                    if duda is not None:
+                        return duda
+        return None
+
+    async def _nombres(
+        self, campo: str, directorio: Directorio | None, token: str | None
+    ) -> dict[str, tuple[str, ...]] | None:
+        """Nombre a mostrar → textos en los que se busca (nombre y, en materiales, el código)."""
+        try:
+            if campo == "material" and self._materiales is not None and token is not None:
+                catalogo = await self._materiales.materiales(token)
+                return {m.nombre: (m.nombre, m.codigo) for m in catalogo.values()}
+            if campo == "cliente" and directorio is not None:
+                return {n: (n,) for n in directorio.clientes.values()}
+            if campo == "obra" and self._obras is not None:
+                return {n: (n,) for n in await self._obras.nombres_de_obras()}
+        except (MaterialesNoDisponibles, ReportesNoDisponibles):
+            return None
+        return None
 
     async def ejecutar(
         self,
@@ -64,7 +135,7 @@ class MotorReportes:
         claves = receta.claves_salida()
 
         catalogo: Mapping[str, MaterialCatalogo] | None = None
-        filtro_material = [f for f in receta.filtros if f.campo == "material" and f.operador == "CONTIENE"]
+        filtro_material = [f for f in receta.filtros if f.campo == "material" and f.operador in POR_NOMBRE]
         if rest and (filtro_material or "material" in claves):
             try:
                 if self._materiales is None or token is None:
@@ -75,7 +146,7 @@ class MotorReportes:
                     raise ServicioNoDisponible("Materiales no responde y el pedido filtra por material.") from error
                 avisos.append(AVISO_MATERIALES)
 
-        filtro_cliente = [f for f in receta.filtros if f.campo == "cliente" and f.operador == "CONTIENE"]
+        filtro_cliente = [f for f in receta.filtros if f.campo == "cliente" and f.operador in POR_NOMBRE]
         if rest and filtro_cliente and directorio is None:
             raise ServicioNoDisponible("Falta el directorio de clientes y el pedido filtra por cliente.")
         if rest and "cliente" in claves and directorio is None:
@@ -88,14 +159,10 @@ class MotorReportes:
 
         ids_material = None
         if filtro_material and catalogo is not None:
-            ids_material = _coincidencias(
-                {m.id: (m.nombre, m.codigo) for m in catalogo.values()}, [str(f.valor) for f in filtro_material]
-            )
+            ids_material = ids_por_nombre({m.id: (m.nombre, m.codigo) for m in catalogo.values()}, filtro_material)
         ids_cliente = None
         if filtro_cliente and directorio is not None:
-            ids_cliente = _coincidencias(
-                {i: (n,) for i, n in directorio.clientes.items()}, [str(f.valor) for f in filtro_cliente]
-            )
+            ids_cliente = ids_por_nombre({i: (n,) for i, n in directorio.clientes.items()}, filtro_cliente)
 
         columnas = receta.columnas_salida()
         if ids_material == () or ids_cliente == ():
@@ -126,9 +193,39 @@ class MotorReportes:
         return salida
 
 
-def _coincidencias(nombres: Mapping[str, tuple[str, ...]], buscados: list[str]) -> tuple[str, ...]:
-    """Ids cuyo nombre (o código) contiene cada texto buscado, sin distinguir mayúsculas ni tildes."""
-    textos = [normalizar(b) for b in buscados]
-    return tuple(
-        sorted(i for i, valores in nombres.items() if all(any(t in normalizar(v) for v in valores) for t in textos))
-    )
+def _duda(campo: str, termino: str, nombres: Mapping[str, tuple[str, ...]]) -> DudaNombre | None:
+    buscado = normalizar(termino)
+    if any(normalizar(v) == buscado for valores in nombres.values() for v in valores):
+        return None  # coincide exacto con uno: sin duda
+    coinciden = sorted(n for n, valores in nombres.items() if any(buscado in normalizar(v) for v in valores))
+    if len(coinciden) > 1:
+        return DudaNombre(campo, termino, VARIOS, tuple(coinciden[:NOMBRES_EN_DUDA]))
+    if not coinciden:
+        cercanos = parecidos(termino, list(nombres), NOMBRES_EN_DUDA)
+        if cercanos:
+            return DudaNombre(campo, termino, NINGUNO, tuple(cercanos))
+    return None
+
+
+POR_NOMBRE = ("CONTIENE", "EN")
+"""Operadores de los filtros por nombre (505: `EN` = «es uno de» varios textos)."""
+
+
+def textos_del_filtro(f: FiltroValidado) -> list[str]:
+    return list(f.valor) if isinstance(f.valor, tuple) else [str(f.valor)]
+
+
+def coincidencias(nombres: Mapping[str, tuple[str, ...]], texto: str) -> tuple[str, ...]:
+    """Ids cuyo nombre (o código) contiene el texto, sin distinguir mayúsculas ni tildes."""
+    buscado = normalizar(texto)
+    return tuple(sorted(i for i, valores in nombres.items() if any(buscado in normalizar(v) for v in valores)))
+
+
+def ids_por_nombre(nombres: Mapping[str, tuple[str, ...]], filtros: list[FiltroValidado]) -> tuple[str, ...]:
+    """`CONTIENE`: los que contienen el texto; `EN`: los que contienen alguno de los textos. Con los dos filtros, los
+    que cumplen ambos."""
+    resultado: set[str] | None = None
+    for f in filtros:
+        ids = {i for texto in textos_del_filtro(f) for i in coincidencias(nombres, texto)}
+        resultado = ids if resultado is None else resultado & ids
+    return tuple(sorted(resultado or ()))

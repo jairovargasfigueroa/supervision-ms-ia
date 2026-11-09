@@ -18,6 +18,13 @@ from constructor_reportes.apoyo_api import DIRECTORIO, cliente_api
 from dobles.modelo_simulado import ModeloSimulado
 from ia.constructor_reportes.infraestructura.ejecutor_sql import EjecutorReportes
 
+
+def _cuerpo(respuesta: httpx.Response) -> Any:
+    """505: un reporte llega dentro de `consulta`; los errores y el historial, tal cual."""
+    datos = respuesta.json()
+    return datos["consulta"] if isinstance(datos, dict) and datos.get("consulta") else datos
+
+
 pytestmark = pytest.mark.integracion
 
 GERENTE = encabezado(["gerente"], sub=GERENTE_ID)
@@ -55,7 +62,7 @@ async def test_cada_atajo_de_punta_a_punta(api: tuple[httpx.AsyncClient, FastAPI
             "/consultas-reporte", json={"atajo": atajo, "directorio": DIRECTORIO}, headers=GERENTE
         )
         assert respuesta.status_code == 200, (atajo, respuesta.text)
-        cuerpo = respuesta.json()
+        cuerpo = _cuerpo(respuesta)
         assert cuerpo["totalFilas"] == filas, (atajo, cuerpo["filas"])
         assert cuerpo["resumenPlantilla"] is True
         assert all(len(f) == len(cuerpo["columnas"]) for f in cuerpo["filas"])
@@ -106,10 +113,10 @@ async def test_recetas_invalidas_no_consultan(
 
     monkeypatch.setattr(EjecutorReportes, "ejecutar", espia)
     for i, (receta, codigo) in enumerate(RECETAS_INVALIDAS):
-        app.state.modelo_lenguaje = ModeloSimulado(json_=[receta])
+        app.state.modelo_lenguaje = ModeloSimulado(json_=[receta] * 3)  # 505: 3 intentos de autocorrección
         usuario = encabezado(["gerente"], sub=f"a0000000-0000-4000-8000-0000000001{i:02d}")  # 10 por minuto por usuario
         respuesta = await http.post("/consultas-reporte", json={"texto": "un pedido cualquiera"}, headers=usuario)
-        assert (respuesta.status_code, respuesta.json()["codigo"]) == (422, codigo), receta
+        assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (422, codigo), receta
     assert consultas == []
 
 

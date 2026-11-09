@@ -18,6 +18,13 @@ from dobles.modelo_simulado import ModeloSimulado
 from ia.comun.tiempo import RelojFijo
 from ia.lenguaje.aplicacion.puerto import LlmNoDisponible, LlmTiempoAgotado
 
+
+def _cuerpo(respuesta: httpx.Response) -> Any:
+    """505: un reporte llega dentro de `consulta`; los errores y el historial, tal cual."""
+    datos = respuesta.json()
+    return datos["consulta"] if isinstance(datos, dict) and datos.get("consulta") else datos
+
+
 pytestmark = pytest.mark.integracion
 
 GERENTE = encabezado(["gerente"], sub=GERENTE_ID)
@@ -73,7 +80,7 @@ async def test_texto_a_reporte_con_resumen_tabla_y_nombres(
     texto = "¿Cuánto cemento se usó en Las Palmas este trimestre?"
     respuesta = await http.post("/consultas-reporte", json={"texto": texto, "directorio": DIRECTORIO}, headers=GERENTE)
     assert respuesta.status_code == 200, respuesta.text
-    cuerpo = respuesta.json()
+    cuerpo = _cuerpo(respuesta)
     assert cuerpo["conjunto"] == "CONSUMO_MATERIAL" and cuerpo["tituloConjunto"] == "Material usado"
     assert cuerpo["texto"] == texto and cuerpo["atajo"] is None
     assert cuerpo["aplicado"][:3] == [
@@ -110,7 +117,7 @@ async def test_atajo_no_llama_al_modelo_para_interpretar(
         "/consultas-reporte", json={"atajo": "COBROS_VENCIDOS", "directorio": DIRECTORIO}, headers=GERENTE
     )
     assert respuesta.status_code == 200, respuesta.text
-    cuerpo = respuesta.json()
+    cuerpo = _cuerpo(respuesta)
     assert cuerpo["atajo"] == "COBROS_VENCIDOS"
     assert cuerpo["filas"] == [
         ["COB-2027-0001", "Edificio Las Palmas", "Constructora Andina SRL", "20000.00", "2027-02-09"]
@@ -134,9 +141,9 @@ async def test_errores_del_cuerpo(
     ]
     for cuerpo, estado, codigo in casos:
         respuesta = await http.post("/consultas-reporte", json=cuerpo, headers=GERENTE)
-        assert (respuesta.status_code, respuesta.json()["codigo"]) == (estado, codigo), cuerpo
+        assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (estado, codigo), cuerpo
     no_json = await http.post("/consultas-reporte", content=b"no es json", headers=GERENTE)
-    assert (no_json.status_code, no_json.json()["codigo"]) == (400, "DATOS_INVALIDOS")
+    assert (no_json.status_code, _cuerpo(no_json)["codigo"]) == (400, "DATOS_INVALIDOS")
     assert modelo.llamadas == []
     assert await _consultas(ia_db) == []  # los 400 no se guardan
 
@@ -147,13 +154,14 @@ async def test_no_reconocida_e_invalida_se_guardan(
     http, _ = api
     modelo._json = [
         {"conjunto": "NINGUNO"},
-        {"conjunto": "CONSUMO_MATERIAL", "filtros": [{"campo": "estado", "operador": "IGUAL", "valor": "X"}]},
+        # 505: la autocorrección lo intenta 3 veces antes de responder RECETA_INVALIDA
+        *[{"conjunto": "CONSUMO_MATERIAL", "filtros": [{"campo": "estado", "operador": "IGUAL", "valor": "X"}]}] * 3,
     ]
     no = await http.post("/consultas-reporte", json={"texto": "¿Qué hora es?"}, headers=GERENTE)
-    assert (no.status_code, no.json()["codigo"]) == (422, "INTENCION_NO_RECONOCIDA")
+    assert (no.status_code, _cuerpo(no)["codigo"]) == (422, "INTENCION_NO_RECONOCIDA")
     invalida = await http.post("/consultas-reporte", json={"texto": "material por estado"}, headers=GERENTE)
-    assert (invalida.status_code, invalida.json()["codigo"]) == (422, "RECETA_INVALIDA")
-    assert invalida.json()["errores"] == [
+    assert (invalida.status_code, _cuerpo(invalida)["codigo"]) == (422, "RECETA_INVALIDA")
+    assert _cuerpo(invalida)["errores"] == [
         {"campo": "filtros[0].campo", "mensaje": "«estado» no es un filtro de CONSUMO_MATERIAL."}
     ]
     guardadas = await _consultas(ia_db)
@@ -173,7 +181,7 @@ async def test_llm_no_disponible_al_interpretar(
     http, _ = api
     modelo._json = [fallo]
     respuesta = await http.post("/consultas-reporte", json={"texto": "obras atrasadas"}, headers=GERENTE)
-    assert (respuesta.status_code, respuesta.json()["codigo"]) == (503, "LLM_NO_DISPONIBLE")
+    assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (503, "LLM_NO_DISPONIBLE")
     assert [(g["resultado"], g["error_codigo"]) for g in await _consultas(ia_db)] == [("ERROR", "LLM_NO_DISPONIBLE")]
 
 
@@ -184,18 +192,18 @@ async def test_servicio_no_disponible_por_materiales_o_directorio(
     materiales.caido = True
     modelo._json = [RECETA_CEMENTO]
     respuesta = await http.post("/consultas-reporte", json={"texto": "cemento en Las Palmas"}, headers=GERENTE)
-    assert (respuesta.status_code, respuesta.json()["codigo"]) == (503, "SERVICIO_NO_DISPONIBLE")
+    assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (503, "SERVICIO_NO_DISPONIBLE")
     modelo._json = [
         {"conjunto": "COBROS", "filtros": [{"campo": "cliente", "operador": "CONTIENE", "valor": "Andina"}]}
     ]
     respuesta = await http.post("/consultas-reporte", json={"texto": "cobros de Andina"}, headers=GERENTE)
-    assert (respuesta.status_code, respuesta.json()["codigo"]) == (503, "SERVICIO_NO_DISPONIBLE")
+    assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (503, "SERVICIO_NO_DISPONIBLE")
     # Sin filtro: el id y el aviso.
     modelo._json = [{"conjunto": "COBROS", "columnas": ["numero", "cliente"]}, {"resumen": "Hay 3 cobros."}]
     respuesta = await http.post("/consultas-reporte", json={"texto": "cobros"}, headers=GERENTE)
     assert respuesta.status_code == 200
-    assert respuesta.json()["avisos"] == ["Nombres de clientes no disponibles"]
-    assert respuesta.json()["filas"][0] == ["COB-2027-0003", d.C2]
+    assert _cuerpo(respuesta)["avisos"] == ["Nombres de clientes no disponibles"]
+    assert _cuerpo(respuesta)["filas"][0] == ["COB-2027-0003", d.C2]
 
 
 async def test_tiempo_agotado(api: tuple[httpx.AsyncClient, FastAPI], ia_db: AsyncDatabase[dict[str, Any]]) -> None:
@@ -209,17 +217,17 @@ async def test_tiempo_agotado(api: tuple[httpx.AsyncClient, FastAPI], ia_db: Asy
         respuesta = await http.post("/consultas-reporte", json={"texto": "obras"}, headers=GERENTE)
     finally:
         consultar.ConsultarReporte.__init__.__defaults__ = (original,)
-    assert (respuesta.status_code, respuesta.json()["codigo"]) == (504, "TIEMPO_AGOTADO")
+    assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (504, "TIEMPO_AGOTADO")
     assert [(g["resultado"], g["error_codigo"]) for g in await _consultas(ia_db)] == [("ERROR", "TIEMPO_AGOTADO")]
 
 
-async def test_limite_de_10_por_minuto_tambien_con_atajos(api: tuple[httpx.AsyncClient, FastAPI]) -> None:
+async def test_limite_de_20_por_minuto_tambien_con_atajos(api: tuple[httpx.AsyncClient, FastAPI]) -> None:
     http, _ = api
-    for _ in range(10):
+    for _ in range(20):  # 505: 20 por minuto (cada turno cuenta)
         respuesta = await http.post("/consultas-reporte", json={"atajo": "AVANCE_OBRAS"}, headers=GERENTE)
         assert respuesta.status_code == 200
     respuesta = await http.post("/consultas-reporte", json={}, headers=GERENTE)  # el límite va antes de validar
-    assert (respuesta.status_code, respuesta.json()["codigo"]) == (429, "DEMASIADAS_CONSULTAS")
+    assert (respuesta.status_code, _cuerpo(respuesta)["codigo"]) == (429, "DEMASIADAS_CONSULTAS")
     assert respuesta.headers["retry-after"] == "60"
     otro = await http.post("/consultas-reporte", json={"atajo": "AVANCE_OBRAS"}, headers=encabezado(["admin"]))
     assert otro.status_code == 200
@@ -233,8 +241,8 @@ async def test_historial_y_catalogo(api: tuple[httpx.AsyncClient, FastAPI]) -> N
         await http.post("/consultas-reporte", json={"atajo": atajo}, headers=GERENTE)
     historial = await http.get("/consultas-reporte", params={"limite": 2}, headers=GERENTE)
     assert historial.status_code == 200
-    assert [h["atajo"] for h in historial.json()] == ["PLANILLAS_OBSERVADAS", "COBROS_VENCIDOS"]
-    assert set(historial.json()[0]) == {
+    assert [h["atajo"] for h in _cuerpo(historial)] == ["PLANILLAS_OBSERVADAS", "COBROS_VENCIDOS"]
+    assert set(_cuerpo(historial)[0]) == {
         "id",
         "texto",
         "atajo",
@@ -257,7 +265,16 @@ async def test_historial_y_catalogo(api: tuple[httpx.AsyncClient, FastAPI]) -> N
         "CONSUMOS_ATIPICOS",
     ]
     material = catalogo["conjuntos"][1]
-    assert material["filtros"] == ["obra", "zona", "cliente", "material", "materialId", "periodo"]
+    assert material["filtros"] == [
+        "obra",
+        "zona",
+        "cliente",
+        "material",
+        "materialId",
+        "periodo",
+        "nivelRiesgo",
+        "soloEnRiesgo",
+    ]
     assert material["agrupaciones"] == ["obra", "zona", "cliente", "material", "periodo"]
     assert material["ejemplos"][0] == "¿Cuánto cemento se usó en Las Palmas este trimestre?"
     assert len(catalogo["atajos"]) == 10

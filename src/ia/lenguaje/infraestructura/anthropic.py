@@ -6,6 +6,10 @@
   (Haiku 5.5, Opus 5.5) no se envía `thinking` y el modelo razona en modo adaptativo. Siempre `output_config.effort`
   (`low` o `medium`) y nunca `temperature`. Los bloques de la respuesta se guardan crudos para devolverlos tal cual en
   la vuelta siguiente.
+- El mensaje de sistema va como bloque con `cache_control: {type: "ephemeral"}` (505): es fijo (instrucciones,
+  catálogo y ejemplos), así Anthropic no lo vuelve a procesar en cada pedido.
+- Fallas pasajeras (conexión, `429`, `5xx`, `529`) salen como `LlmNoDisponible(reintentable=True)`; las reintenta
+  `ModeloConReintentos`.
 - Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic.
 - El SDK 2 usa `httpx2` (no `httpx`): el transporte simulado de las pruebas es el de `httpx2`.
 """
@@ -108,7 +112,8 @@ class ModeloAnthropic:
     ) -> Message:
         sistema = "\n\n".join(m.contenido for m in mensajes if m.rol is Rol.SISTEMA)
         if sistema:
-            extra = {**extra, "system": sistema}
+            bloque = {"type": "text", "text": sistema, "cache_control": {"type": "ephemeral"}}
+            extra = {**extra, "system": [bloque]}
         inicio = time.monotonic()
         resultado = "error"  # cualquier fallo no previsto queda registrado como error
         respuesta: Message | None = None
@@ -134,10 +139,13 @@ class ModeloAnthropic:
             raise LlmTiempoAgotado("El modelo no respondió a tiempo.") from error
         except anthropic.APIConnectionError as error:
             resultado = "sin_conexion"
-            raise LlmNoDisponible("No se pudo conectar con la API de Anthropic.") from error
+            raise LlmNoDisponible("No se pudo conectar con la API de Anthropic.", reintentable=True) from error
         except anthropic.APIStatusError as error:
             resultado = f"error_{error.status_code}"
-            raise LlmNoDisponible(f"La API de Anthropic respondió {error.status_code}.") from error
+            pasajero = error.status_code in (408, 409, 429) or error.status_code >= 500
+            raise LlmNoDisponible(
+                f"La API de Anthropic respondió {error.status_code}.", reintentable=pasajero
+            ) from error
         finally:
             registrar_llamada(
                 proveedor=PROVEEDOR,
@@ -148,6 +156,7 @@ class ModeloAnthropic:
                 opciones=opciones,
                 tokens_entrada=None if respuesta is None else respuesta.usage.input_tokens,
                 tokens_salida=None if respuesta is None else respuesta.usage.output_tokens,
+                tokens_cache=None if respuesta is None else respuesta.usage.cache_read_input_tokens,
             )
 
 

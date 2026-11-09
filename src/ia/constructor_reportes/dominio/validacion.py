@@ -30,6 +30,7 @@ from ia.constructor_reportes.dominio.catalogo import (
     V_ENUM,
     V_FECHA,
     V_ID,
+    V_NUMERO,
     V_PERIODO,
     V_TEXTO,
     V_UUID,
@@ -48,7 +49,7 @@ _PERIODO = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-ValorFiltro = str | int | bool | date | tuple[str, ...]
+ValorFiltro = str | int | float | bool | date | tuple[str, ...]
 
 
 class IntencionNoReconocida(Exception):
@@ -357,6 +358,11 @@ class _Validador:
                 self.error(ruta, f"El valor es un entero de {d.minimo} a {d.maximo}.")
                 return None
             return valor
+        if clase == V_NUMERO:
+            numero = _numero(valor)
+            if numero is None:
+                self.error(ruta, "El valor es un número.")
+            return numero
         if not isinstance(valor, str):
             self.error(ruta, "El valor es un texto.")
             return None
@@ -398,7 +404,7 @@ class _Validador:
             if fecha is None:
                 self.error(ruta, "La fecha tiene el formato AAAA-MM-DD.")
                 return None
-            if fecha > self.hoy:
+            if fecha > self.hoy and not d.futuro:
                 self.error(ruta, "La fecha no puede estar en el futuro.")
                 return None
             return fecha
@@ -406,7 +412,7 @@ class _Validador:
 
     def _rangos(self, validados: list[tuple[int, FiltroValidado]]) -> None:
         """`DESDE ≤ HASTA` y un rango de hasta 24 meses (hasta hoy si falta `HASTA`)."""
-        for campo in {v.campo for _, v in validados if v.operador in ("DESDE", "HASTA")}:
+        for campo in {v.campo for _, v in validados if v.operador in ("DESDE", "HASTA") and _es_tiempo(v.valor)}:
             desde = next(((i, v.valor) for i, v in validados if v.campo == campo and v.operador == "DESDE"), None)
             hasta = next(((i, v.valor) for i, v in validados if v.campo == campo and v.operador == "HASTA"), None)
             if desde is None:
@@ -438,12 +444,33 @@ def _desde_implicito(filtros: tuple[FiltroValidado, ...]) -> tuple[FiltroValidad
     24 meses vale también sin `DESDE`, así nunca se consulta todo el historial."""
     implicitos = []
     for f in filtros:
-        if f.operador != "HASTA" or any(o.campo == f.campo and o.operador == "DESDE" for o in filtros):
+        if f.operador != "HASTA" or not _es_tiempo(f.valor):
+            continue
+        if any(o.campo == f.campo and o.operador == "DESDE" for o in filtros):
             continue
         inicio = _sumar_meses(_como_fecha(f.valor).replace(day=1), -(MESES_MAXIMOS - 1))
         valor: ValorFiltro = inicio if isinstance(f.valor, date) else _periodo(inicio)
         implicitos.append(FiltroValidado(f.campo, "DESDE", valor))
     return tuple(implicitos)
+
+
+def _es_tiempo(valor: ValorFiltro) -> bool:
+    """Fechas y periodos `AAAA-MM` (los números de un filtro numérico no tienen rango de meses)."""
+    return isinstance(valor, date) or (isinstance(valor, str) and bool(_PERIODO.match(valor)))
+
+
+def _numero(valor: Any) -> int | float | None:
+    """Entero o decimal; acepta también un texto numérico («10», «2,5»)."""
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, int | float):
+        return valor
+    if isinstance(valor, str):
+        try:
+            return float(valor.strip().replace(",", "."))
+        except ValueError:
+            return None
+    return None
 
 
 def _periodo(dia: date) -> str:

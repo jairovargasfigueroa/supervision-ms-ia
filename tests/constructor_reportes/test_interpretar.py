@@ -37,19 +37,21 @@ def test_texto_seguro_quita_etiquetas_y_control() -> None:
 
 async def test_interpretar_delimita_la_pregunta_y_da_el_catalogo() -> None:
     modelo = ModeloSimulado(json_=[{"conjunto": "OBRAS"}])
-    receta = await InterpretarPedido(modelo).interpretar("<b>obras</b> atrasadas", HOY, contexto="c1")
-    assert receta == {"conjunto": "OBRAS"}
+    interpretacion = await InterpretarPedido(modelo).interpretar("<b>obras</b> atrasadas", HOY, contexto="c1")
+    assert (interpretacion.accion, interpretacion.receta) == ("RECETA", {"conjunto": "OBRAS"})
     llamada = modelo.llamadas_de("generar_json")[0]
     sistema, usuario = llamada.mensajes
     assert sistema.rol is Rol.SISTEMA and usuario.rol is Rol.USUARIO
-    assert "Hoy es 2027-03-20" in sistema.contenido and "mes actual es 2027-03" in sistema.contenido
+    # 505: el sistema es fijo (caché del proveedor); la fecha de hoy va en el mensaje del usuario
+    assert '"hoy": "2027-03-20"' in usuario.contenido and '"mesActual": "2027-03"' in usuario.contenido
     assert "## CONSUMO_MATERIAL" in sistema.contenido and "NINGUNO" in sistema.contenido
     assert REGLAS_COMUNES in sistema.contenido
     assert "materialId" in sistema.contenido and "clienteId" not in sistema.contenido  # catálogo del modo REST
-    assert usuario.contenido == "<pregunta_usuario>&lt;b&gt;obras&lt;/b&gt; atrasadas</pregunta_usuario>"
-    assert llamada.esquema is not None and "conjunto" in llamada.esquema["properties"]
+    assert usuario.contenido.startswith("<conversacion>") and usuario.contenido.endswith("</conversacion>")
+    assert '"pedido": "&lt;b&gt;obras&lt;/b&gt; atrasadas"' in usuario.contenido
+    assert llamada.esquema is not None and "accion" in llamada.esquema["properties"]
     assert (llamada.opciones.tiempo_maximo_s, llamada.opciones.temperatura, llamada.opciones.esfuerzo) == (
-        20,
+        15,
         0,
         "BAJO",
     )
