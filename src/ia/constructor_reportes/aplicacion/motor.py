@@ -5,7 +5,7 @@ el modo REST), ejecuta la consulta parametrizada y devuelve las filas como texto
 """
 
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -16,9 +16,12 @@ from ia.constructor_reportes.aplicacion.puertos import (
     EjecutorConsultas,
     MaterialCatalogo,
     MaterialesNoDisponibles,
+    NombresObras,
+    ReportesNoDisponibles,
     ServicioNoDisponible,
 )
 from ia.constructor_reportes.dominio.catalogo import REST
+from ia.constructor_reportes.dominio.conversacion import parecidos
 from ia.constructor_reportes.dominio.resultado import (
     AVISO_CLIENTES,
     AVISO_MATERIALES,
@@ -44,10 +47,78 @@ def normalizar(texto: str) -> str:
     return "".join(c for c in descompuesto if not unicodedata.combining(c)).casefold().strip()
 
 
+@dataclass(frozen=True)
+class DudaNombre:
+    """505: un término de un filtro por nombre que coincide con varios nombres (`VARIOS`) o con ninguno, pero tiene
+    parecidos (`NINGUNO`)."""
+
+    campo: str
+    termino: str
+    clase: str
+    nombres: tuple[str, ...]
+
+
+VARIOS = "VARIOS"
+NINGUNO = "NINGUNO"
+NOMBRES_EN_DUDA = 5
+
+
 class MotorReportes:
-    def __init__(self, ejecutor: EjecutorConsultas, materiales: CatalogoMateriales | None = None) -> None:
+    def __init__(
+        self,
+        ejecutor: EjecutorConsultas,
+        materiales: CatalogoMateriales | None = None,
+        obras: NombresObras | None = None,
+    ) -> None:
         self._ejecutor = ejecutor
         self._materiales = materiales
+        self._obras = obras
+
+    async def buscar_duda(
+        self,
+        receta: RecetaValidada,
+        *,
+        directorio: Directorio | None = None,
+        token: str | None = None,
+        aceptados: Collection[str] = (),
+    ) -> DudaNombre | None:
+        """505: la primera duda de un filtro por nombre (`obra`, `cliente` o `material`, con `CONTIENE` o `EN`) cuyo
+        campo no está en la salida (si se agrupa o se muestra por él, varios nombres son lo esperado). Sin los nombres
+        disponibles (Materiales o la base caídos, sin directorio), no hay duda: el motor sigue como en la 503."""
+        if receta.modo != REST:
+            return None
+        salida = set(receta.claves_salida())
+        for campo in ("material", "obra", "cliente"):
+            filtros = [f for f in receta.filtros if f.campo == campo and f.operador in POR_NOMBRE]
+            if not filtros or campo in salida:
+                continue
+            nombres = await self._nombres(campo, directorio, token)
+            if not nombres:
+                continue
+            for f in filtros:
+                for termino in textos_del_filtro(f):
+                    if normalizar(termino) in aceptados:
+                        continue
+                    duda = _duda(campo, termino, nombres)
+                    if duda is not None:
+                        return duda
+        return None
+
+    async def _nombres(
+        self, campo: str, directorio: Directorio | None, token: str | None
+    ) -> dict[str, tuple[str, ...]] | None:
+        """Nombre a mostrar → textos en los que se busca (nombre y, en materiales, el código)."""
+        try:
+            if campo == "material" and self._materiales is not None and token is not None:
+                catalogo = await self._materiales.materiales(token)
+                return {m.nombre: (m.nombre, m.codigo) for m in catalogo.values()}
+            if campo == "cliente" and directorio is not None:
+                return {n: (n,) for n in directorio.clientes.values()}
+            if campo == "obra" and self._obras is not None:
+                return {n: (n,) for n in await self._obras.nombres_de_obras()}
+        except (MaterialesNoDisponibles, ReportesNoDisponibles):
+            return None
+        return None
 
     async def ejecutar(
         self,
@@ -120,6 +191,20 @@ class MotorReportes:
                 texto = directorio.clientes.get(str(valor), texto)
             salida.append(texto)
         return salida
+
+
+def _duda(campo: str, termino: str, nombres: Mapping[str, tuple[str, ...]]) -> DudaNombre | None:
+    buscado = normalizar(termino)
+    if any(normalizar(v) == buscado for valores in nombres.values() for v in valores):
+        return None  # coincide exacto con uno: sin duda
+    coinciden = sorted(n for n, valores in nombres.items() if any(buscado in normalizar(v) for v in valores))
+    if len(coinciden) > 1:
+        return DudaNombre(campo, termino, VARIOS, tuple(coinciden[:NOMBRES_EN_DUDA]))
+    if not coinciden:
+        cercanos = parecidos(termino, list(nombres), NOMBRES_EN_DUDA)
+        if cercanos:
+            return DudaNombre(campo, termino, NINGUNO, tuple(cercanos))
+    return None
 
 
 POR_NOMBRE = ("CONTIENE", "EN")

@@ -52,6 +52,8 @@ class Configuracion(BaseSettings):
 
     # 503: modelo de lenguaje (lo reutiliza la 502). `ollama` u `anthropic`; otro valor: el servicio no arranca.
     llm_proveedor: str = "ollama"
+    consultas_por_minuto: int = 20
+    """505: consultas de reportes por minuto y usuario (`IA_CONSULTAS_POR_MINUTO`; cada turno cuenta)."""
     # Vacío: `qwen3:8b` con Ollama y `claude-sonnet-5-5` con Anthropic.
     llm_modelo: str | None = None
     ollama_url: str = "http://localhost:11434"

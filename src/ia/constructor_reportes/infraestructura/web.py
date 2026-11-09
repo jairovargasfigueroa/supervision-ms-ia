@@ -1,6 +1,7 @@
 """Rutas REST del constructor de reportes (503): solo `admin` y `gerente` (los reportes cruzan todas las obras).
 
-- `POST /consultas-reporte` · texto o atajo (el gateway agrega `directorio.clientes`)
+- `POST /consultas-reporte` · texto o atajo, con `conversacionId` para continuar una conversación (505); responde un
+  reporte o una pregunta de aclaración (el gateway agrega `directorio.clientes`)
 - `GET /consultas-reporte?limite=` · las del usuario del token
 - `GET /catalogo-reportes` · el catálogo del modo REST
 """
@@ -19,9 +20,11 @@ from ia.comun.errores import ErrorApi, ErrorCampo, error_generico
 from ia.comun.tiempo import Reloj, RelojSistema
 from ia.constructor_reportes.aplicacion.consultar import (
     ConsultarReporte,
+    ConversacionNoEncontrada,
     DemasiadasConsultas,
     PedidoReporte,
     ReporteConsultado,
+    RespuestaConsulta,
     TiempoAgotado,
 )
 from ia.constructor_reportes.aplicacion.motor import Directorio, MotorReportes
@@ -31,6 +34,10 @@ from ia.constructor_reportes.dominio.catalogo import CATALOGO, REST
 from ia.constructor_reportes.dominio.validacion import IntencionNoReconocida, RecetaInvalida
 from ia.constructor_reportes.infraestructura.atipicos_mongo import ConsultaAtipicosMongo
 from ia.constructor_reportes.infraestructura.consultas_mongo import RepositorioConsultasMongo
+from ia.constructor_reportes.infraestructura.conversaciones_mongo import (
+    CacheRecetasMongo,
+    RepositorioConversacionesMongo,
+)
 from ia.constructor_reportes.infraestructura.ejecutor_sql import EjecutorReportes, EjecutorSql
 from ia.constructor_reportes.infraestructura.limite_mongo import LimitadorConsultasMongo
 from ia.lenguaje.aplicacion.puerto import LlmNoDisponible
@@ -39,6 +46,8 @@ router = APIRouter(tags=["reportes"])
 PERSONAS_REPORTES = exigir_roles("admin", "gerente")
 
 TEXTO_MINIMO = 3
+TEXTO_MINIMO_CONVERSACION = 1
+"""505: con `conversacionId`, una respuesta corta («sí», «IP-30»)."""
 TEXTO_MAXIMO = 500
 CLIENTES_MAXIMOS = 1000
 
@@ -59,6 +68,7 @@ class DirectorioPedido(BaseModel):
 class PedidoConsulta(BaseModel):
     texto: str | None = None
     atajo: str | None = None
+    conversacion_id: str | None = Field(default=None, alias="conversacionId", max_length=64)
     directorio: DirectorioPedido | None = None
 
 
@@ -149,11 +159,12 @@ def _reloj(request: Request) -> Reloj:
 
 
 def crear_motor_reportes(request: Request) -> MotorReportes:
-    """El mismo motor que usa la herramienta MCP `consultar_reporte` (501)."""
+    """El mismo motor que usa la herramienta MCP `consultar_reporte` (501); en el modo REST también resuelve las dudas
+    de nombres de obras (505)."""
     estado = request.app.state
     sql = EjecutorSql(estado.motor_lector)
     ejecutor = EjecutorReportes(sql, ConsultaAtipicosMongo(estado.ia_db, sql, estado.config.zona_horaria))
-    return MotorReportes(ejecutor, estado.catalogo_materiales)
+    return MotorReportes(ejecutor, estado.catalogo_materiales, sql)
 
 
 def consultar_reporte(request: Request) -> ConsultarReporte:
@@ -164,15 +175,47 @@ def consultar_reporte(request: Request) -> ConsultarReporte:
         RepositorioConsultasMongo(estado.ia_db),
         LimitadorConsultasMongo(estado.ia_db),
         _reloj(request),
+        conversaciones=RepositorioConversacionesMongo(estado.ia_db),
+        cache=CacheRecetasMongo(estado.ia_db),
+        limite_por_minuto=estado.config.consultas_por_minuto,
     )
 
 
-@router.post("/consultas-reporte", response_model=ConsultaReporteRespuesta, response_model_by_alias=True)
+class AclaracionRespuesta(_Camel):
+    pregunta: str
+    opciones: list[str]
+    preguntas_restantes: int
+
+
+class RespuestaReporteRespuesta(_Camel):
+    """505: `REPORTE` (con `consulta`) o `ACLARACION` (con `aclaracion`)."""
+
+    conversacion_id: str
+    tipo: str
+    consulta: ConsultaReporteRespuesta | None
+    aclaracion: AclaracionRespuesta | None
+
+    @classmethod
+    def desde(cls, respuesta: RespuestaConsulta) -> "RespuestaReporteRespuesta":
+        a = respuesta.aclaracion
+        return cls(
+            conversacion_id=respuesta.conversacion_id,
+            tipo=respuesta.tipo,
+            consulta=None if respuesta.reporte is None else ConsultaReporteRespuesta.desde(respuesta.reporte),
+            aclaracion=None
+            if a is None
+            else AclaracionRespuesta(
+                pregunta=a.pregunta, opciones=list(a.opciones), preguntas_restantes=a.preguntas_restantes
+            ),
+        )
+
+
+@router.post("/consultas-reporte", response_model=RespuestaReporteRespuesta, response_model_by_alias=True)
 async def post_consulta_reporte(
     request: Request,
     usuario: Usuario = Depends(PERSONAS_REPORTES),  # noqa: B008
     caso: ConsultarReporte = Depends(consultar_reporte),  # noqa: B008
-) -> ConsultaReporteRespuesta:
+) -> RespuestaReporteRespuesta:
     # El límite se cuenta antes de validar el cuerpo.
     try:
         await caso.contar(usuario.id)
@@ -181,7 +224,7 @@ async def post_consulta_reporte(
             429,
             "DEMASIADAS_CONSULTAS",
             "Demasiadas consultas",
-            "Se permiten 10 consultas de reportes por minuto.",
+            f"Se permiten {caso.limite_por_minuto} consultas de reportes por minuto.",
             encabezados={"Retry-After": str(error.segundos)},
         ) from error
     except ReportesNoDisponibles as error:
@@ -191,7 +234,16 @@ async def post_consulta_reporte(
     token = request.headers.get("authorization", "").partition(" ")[2].strip()
     directorio = None if pedido.directorio is None else Directorio({c.id: c.nombre for c in pedido.directorio.clientes})
     try:
-        reporte = await caso.consultar(PedidoReporte(usuario.id, pedido.texto, pedido.atajo, directorio, token))
+        respuesta = await caso.consultar(
+            PedidoReporte(usuario.id, pedido.texto, pedido.atajo, directorio, token, pedido.conversacion_id)
+        )
+    except ConversacionNoEncontrada as error:
+        raise ErrorApi(
+            404,
+            "CONVERSACION_NO_ENCONTRADA",
+            "La conversación expiró",
+            "La conversación no existe, expiró o es de otro usuario: vuelve a hacer el pedido.",
+        ) from error
     except IntencionNoReconocida as error:
         raise ErrorApi(
             422,
@@ -215,7 +267,7 @@ async def post_consulta_reporte(
         raise _no_disponible("SERVICIO_NO_DISPONIBLE", str(error)) from error
     except TiempoAgotado as error:
         raise ErrorApi(504, "TIEMPO_AGOTADO", "Tiempo agotado", "El reporte tardó demasiado.") from error
-    return ConsultaReporteRespuesta.desde(reporte)
+    return RespuestaReporteRespuesta.desde(respuesta)
 
 
 @router.get("/consultas-reporte", response_model=list[ConsultaCortaRespuesta], response_model_by_alias=True)
@@ -274,14 +326,10 @@ async def _leer_pedido(request: Request) -> PedidoConsulta:
         raise _datos_invalidos("atajo", "Ese reporte común no existe.")
     if pedido.texto is not None:
         texto = pedido.texto.strip()
-        if not TEXTO_MINIMO <= len(texto) <= TEXTO_MAXIMO:
-            raise ErrorApi(
-                400,
-                "TEXTO_INVALIDO",
-                "Texto inválido",
-                "El pedido debe tener entre 3 y 500 caracteres.",
-                errores=[ErrorCampo("texto", "El pedido debe tener entre 3 y 500 caracteres.")],
-            )
+        minimo = TEXTO_MINIMO_CONVERSACION if pedido.conversacion_id else TEXTO_MINIMO
+        if not minimo <= len(texto) <= TEXTO_MAXIMO:
+            mensaje = f"El pedido debe tener entre {minimo} y {TEXTO_MAXIMO} caracteres."
+            raise ErrorApi(400, "TEXTO_INVALIDO", "Texto inválido", mensaje, errores=[ErrorCampo("texto", mensaje)])
         pedido = pedido.model_copy(update={"texto": texto})
     return pedido
 
