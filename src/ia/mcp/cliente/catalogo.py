@@ -68,7 +68,8 @@ class EntradaStockObra(_Entrada):
 
 
 class EntradaConsumosPartida(_Entrada):
-    obra_id: IdTexto
+    obra_id: IdTexto | None = None
+    """Sin obra (505): las filas de todas las obras con consumo en el periodo."""
     periodo: Periodo
     partida_id: IdTexto | None = None
 

@@ -52,7 +52,8 @@ async def test_mismas_cifras_que_el_rest(app: tuple[FastAPI, httpx.AsyncClient],
     async with cliente_mcp(aplicacion) as cliente:
         error, salida = await llamar(cliente, "consultar_reporte", receta)
     assert not error, salida
-    esperado = rest.json()
+    assert rest.json()["tipo"] == "REPORTE"
+    esperado = rest.json()["consulta"]  # 505: la consulta va dentro de la respuesta
     assert salida["conjunto"] == esperado["conjunto"]
     assert salida["titulo"] == esperado["tituloConjunto"]
     assert [c["clave"] for c in salida["columnas"]] == [c["clave"] for c in esperado["columnas"]]
