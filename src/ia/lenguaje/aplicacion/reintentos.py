@@ -39,7 +39,9 @@ class ModeloConReintentos:
     async def generar_json(
         self, mensajes: Sequence[Mensaje], esquema: dict[str, Any], opciones: Opciones
     ) -> dict[str, Any]:
-        return await self._con_reintentos("generar_json", lambda: self._modelo.generar_json(mensajes, esquema, opciones))
+        return await self._con_reintentos(
+            "generar_json", lambda: self._modelo.generar_json(mensajes, esquema, opciones)
+        )
 
     async def _con_reintentos(self, operacion: str, llamar: Callable[[], Awaitable[T]]) -> T:
         for intento, espera in enumerate((*self._esperas, None), start=1):

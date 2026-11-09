@@ -267,7 +267,9 @@ async def test_anthropic_errores_son_llm_no_disponible(estado: int, tipo: str) -
 
 async def test_anthropic_400_no_es_reintentable() -> None:
     modelo, _ = _anthropic(
-        lambda _: httpx2.Response(400, json={"type": "error", "error": {"type": "invalid_request_error", "message": "x"}})
+        lambda _: httpx2.Response(
+            400, json={"type": "error", "error": {"type": "invalid_request_error", "message": "x"}}
+        )
     )
     with pytest.raises(LlmNoDisponible) as error:
         await modelo.generar_json([Mensaje.usuario("x")], ESQUEMA, OPCIONES)

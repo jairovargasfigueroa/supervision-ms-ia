@@ -27,7 +27,7 @@ from ia.constructor_reportes.dominio.resultado import (
     Resultado,
     valor_texto,
 )
-from ia.constructor_reportes.dominio.validacion import RecetaValidada
+from ia.constructor_reportes.dominio.validacion import FiltroValidado, RecetaValidada
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class MotorReportes:
         claves = receta.claves_salida()
 
         catalogo: Mapping[str, MaterialCatalogo] | None = None
-        filtro_material = [f for f in receta.filtros if f.campo == "material" and f.operador == "CONTIENE"]
+        filtro_material = [f for f in receta.filtros if f.campo == "material" and f.operador in POR_NOMBRE]
         if rest and (filtro_material or "material" in claves):
             try:
                 if self._materiales is None or token is None:
@@ -75,7 +75,7 @@ class MotorReportes:
                     raise ServicioNoDisponible("Materiales no responde y el pedido filtra por material.") from error
                 avisos.append(AVISO_MATERIALES)
 
-        filtro_cliente = [f for f in receta.filtros if f.campo == "cliente" and f.operador == "CONTIENE"]
+        filtro_cliente = [f for f in receta.filtros if f.campo == "cliente" and f.operador in POR_NOMBRE]
         if rest and filtro_cliente and directorio is None:
             raise ServicioNoDisponible("Falta el directorio de clientes y el pedido filtra por cliente.")
         if rest and "cliente" in claves and directorio is None:
@@ -88,14 +88,10 @@ class MotorReportes:
 
         ids_material = None
         if filtro_material and catalogo is not None:
-            ids_material = _coincidencias(
-                {m.id: (m.nombre, m.codigo) for m in catalogo.values()}, [str(f.valor) for f in filtro_material]
-            )
+            ids_material = ids_por_nombre({m.id: (m.nombre, m.codigo) for m in catalogo.values()}, filtro_material)
         ids_cliente = None
         if filtro_cliente and directorio is not None:
-            ids_cliente = _coincidencias(
-                {i: (n,) for i, n in directorio.clientes.items()}, [str(f.valor) for f in filtro_cliente]
-            )
+            ids_cliente = ids_por_nombre({i: (n,) for i, n in directorio.clientes.items()}, filtro_cliente)
 
         columnas = receta.columnas_salida()
         if ids_material == () or ids_cliente == ():
@@ -126,9 +122,25 @@ class MotorReportes:
         return salida
 
 
-def _coincidencias(nombres: Mapping[str, tuple[str, ...]], buscados: list[str]) -> tuple[str, ...]:
-    """Ids cuyo nombre (o código) contiene cada texto buscado, sin distinguir mayúsculas ni tildes."""
-    textos = [normalizar(b) for b in buscados]
-    return tuple(
-        sorted(i for i, valores in nombres.items() if all(any(t in normalizar(v) for v in valores) for t in textos))
-    )
+POR_NOMBRE = ("CONTIENE", "EN")
+"""Operadores de los filtros por nombre (505: `EN` = «es uno de» varios textos)."""
+
+
+def textos_del_filtro(f: FiltroValidado) -> list[str]:
+    return list(f.valor) if isinstance(f.valor, tuple) else [str(f.valor)]
+
+
+def coincidencias(nombres: Mapping[str, tuple[str, ...]], texto: str) -> tuple[str, ...]:
+    """Ids cuyo nombre (o código) contiene el texto, sin distinguir mayúsculas ni tildes."""
+    buscado = normalizar(texto)
+    return tuple(sorted(i for i, valores in nombres.items() if any(buscado in normalizar(v) for v in valores)))
+
+
+def ids_por_nombre(nombres: Mapping[str, tuple[str, ...]], filtros: list[FiltroValidado]) -> tuple[str, ...]:
+    """`CONTIENE`: los que contienen el texto; `EN`: los que contienen alguno de los textos. Con los dos filtros, los
+    que cumplen ambos."""
+    resultado: set[str] | None = None
+    for f in filtros:
+        ids = {i for texto in textos_del_filtro(f) for i in coincidencias(nombres, texto)}
+        resultado = ids if resultado is None else resultado & ids
+    return tuple(sorted(resultado or ()))

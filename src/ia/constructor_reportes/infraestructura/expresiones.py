@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Date, Integer, bindparam, case, func, literal
+from sqlalchemy import Date, Integer, and_, bindparam, case, func, literal, select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.expression import FromClause
 
@@ -55,13 +55,40 @@ DIFERENCIA = o.plazo_pct - o.avance_pct
 NIVEL_RIESGO = func.coalesce(o.nivel_riesgo, literal("SIN_DATOS"))
 
 _DE_LA_OBRA: dict[str, ColumnElement[Any]] = {"obra": o.nombre, "zona": o.zona, "cliente": o.cliente_id}
+EN_RIESGO = DIFERENCIA > UMBRAL_EN_RIESGO
+_RIESGO_DE_LA_OBRA: dict[str, ColumnElement[Any]] = {"nivelRiesgo": NIVEL_RIESGO, "soloEnRiesgo": EN_RIESGO}
+"""505: el riesgo de la obra unida, en todos los conjuntos."""
 _FILTROS_OBRA: dict[str, ColumnElement[Any]] = {
     "obra": o.nombre,
     "obraId": o.obra_id,
     "zona": o.zona,
     "cliente": o.cliente_id,
     "clienteId": o.cliente_id,
+    **_RIESGO_DE_LA_OBRA,
 }
+
+
+def _por_obra(tabla: Any, valor: ColumnElement[Any], *condiciones: ColumnElement[bool]) -> ColumnElement[Any]:
+    """Subconsulta escalar correlacionada con la obra de `rpt_obra_resumen` (505: datos de otros temas por obra)."""
+    consulta = select(valor).select_from(tabla).where(and_(tabla.c.obra_id == o.obra_id, *condiciones))
+    return consulta.scalar_subquery()
+
+
+PLANILLAS_OBSERVADAS = _por_obra(rpt_planilla, func.count(), p.estado == literal("OBSERVADA"))
+PLANILLAS_APROBADAS = _por_obra(rpt_planilla, func.count(), p.estado == literal("APROBADA"))
+_COBRO_CON_NUMERO = c.numero.is_not(None)
+COBROS_VENCIDOS = _por_obra(rpt_cobro, func.count(), _COBRO_CON_NUMERO, c.estado == literal("VENCIDO"))
+MONTO_VENCIDO = _por_obra(
+    rpt_cobro, func.coalesce(func.sum(c.monto), 0), _COBRO_CON_NUMERO, c.estado == literal("VENCIDO")
+)
+MONTO_POR_COBRAR = _por_obra(
+    rpt_cobro,
+    func.coalesce(func.sum(c.monto), 0),
+    _COBRO_CON_NUMERO,
+    c.estado.in_([literal("PENDIENTE"), literal("VENCIDO")]),
+)
+SALIDAS_SIN_STOCK = _por_obra(rpt_movimiento, func.count(), m.supera_stock.is_(True), m.tipo == literal("SALIDA"))
+RIESGO_PCT = func.round(o.riesgo_retraso * 100, 1)
 
 OBRAS = ExpresionesConjunto(
     origen=rpt_obra_resumen,
@@ -75,14 +102,31 @@ OBRAS = ExpresionesConjunto(
         "avance_pct": o.avance_pct,
         "plazo_pct": o.plazo_pct,
         "diferencia": DIFERENCIA,
-        "en_riesgo": DIFERENCIA > UMBRAL_EN_RIESGO,
-        "riesgo_pct": func.round(o.riesgo_retraso * 100, 1),
+        "en_riesgo": EN_RIESGO,
+        "riesgo_pct": RIESGO_PCT,
+        "planillas_observadas": PLANILLAS_OBSERVADAS,
+        "planillas_aprobadas": PLANILLAS_APROBADAS,
+        "cobros_vencidos": COBROS_VENCIDOS,
+        "monto_vencido": MONTO_VENCIDO,
+        "monto_por_cobrar": MONTO_POR_COBRAR,
+        "salidas_sin_stock": SALIDAS_SIN_STOCK,
     },
     filtros={
         **_FILTROS_OBRA,
         "estado": o.estado,
-        "nivelRiesgo": NIVEL_RIESGO,
-        "soloEnRiesgo": DIFERENCIA > UMBRAL_EN_RIESGO,
+        "avancePct": o.avance_pct,
+        "plazoPct": o.plazo_pct,
+        "diferencia": DIFERENCIA,
+        "riesgoPct": RIESGO_PCT,
+        "montoContrato": o.monto_contrato,
+        "plazoDias": o.plazo_dias,
+        "fechaInicio": o.fecha_inicio,
+        "planillasObservadas": PLANILLAS_OBSERVADAS,
+        "planillasAprobadas": PLANILLAS_APROBADAS,
+        "cobrosVencidos": COBROS_VENCIDOS,
+        "montoVencido": MONTO_VENCIDO,
+        "montoPorCobrar": MONTO_POR_COBRAR,
+        "salidasSinStock": SALIDAS_SIN_STOCK,
     },
 )
 
@@ -119,6 +163,7 @@ MOVIMIENTOS = ExpresionesConjunto(
         "soloSuperaStock": m.supera_stock.is_(True),
         "periodo": m.periodo,
         "fecha": FECHA_MOVIMIENTO,
+        "cantidad": m.cantidad,
     },
 )
 
@@ -151,6 +196,12 @@ COBROS = ExpresionesConjunto(
         "estado": c.estado,
         "venceEnDias": c.vence_en,
         "periodo": MES_EMISION,
+        "monto": c.monto,
+        "diasParaVencer": (c.vence_en - HOY).cast(Integer),
+        "emitidoEn": c.emitido_en,
+        "venceEn": c.vence_en,
+        "pagadoEn": c.pagado_en,
+        **_RIESGO_DE_LA_OBRA,
     },
     condiciones=(c.numero.is_not(None),),
 )
@@ -175,6 +226,9 @@ PLANILLAS = ExpresionesConjunto(
         "estado": p.estado,
         "periodo": p.periodo,
         "aprobadaEn": fecha_en_la_paz(p.aprobada_en),
+        "neto": p.neto,
+        "vecesObservada": p.veces_observada,
+        "avancePeriodoPct": p.avance_periodo_pct,
     },
 )
 

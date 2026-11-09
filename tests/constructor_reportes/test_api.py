@@ -257,7 +257,16 @@ async def test_historial_y_catalogo(api: tuple[httpx.AsyncClient, FastAPI]) -> N
         "CONSUMOS_ATIPICOS",
     ]
     material = catalogo["conjuntos"][1]
-    assert material["filtros"] == ["obra", "zona", "cliente", "material", "materialId", "periodo"]
+    assert material["filtros"] == [
+        "obra",
+        "zona",
+        "cliente",
+        "material",
+        "materialId",
+        "periodo",
+        "nivelRiesgo",
+        "soloEnRiesgo",
+    ]
     assert material["agrupaciones"] == ["obra", "zona", "cliente", "material", "periodo"]
     assert material["ejemplos"][0] == "¿Cuánto cemento se usó en Las Palmas este trimestre?"
     assert len(catalogo["atajos"]) == 10

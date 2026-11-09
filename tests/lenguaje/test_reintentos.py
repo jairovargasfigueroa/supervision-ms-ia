@@ -63,9 +63,7 @@ async def test_se_rinde_despues_de_dos_reintentos() -> None:
     assert guion.llamadas == 3
 
 
-@pytest.mark.parametrize(
-    "error", [LlmNoDisponible("400"), LlmTiempoAgotado("lento"), SalidaNoValida("no es JSON")]
-)
+@pytest.mark.parametrize("error", [LlmNoDisponible("400"), LlmTiempoAgotado("lento"), SalidaNoValida("no es JSON")])
 async def test_no_reintenta_lo_que_no_es_pasajero(error: Exception) -> None:
     modelo, guion = _modelo(error, {"ok": 1})
     with pytest.raises(type(error)):
