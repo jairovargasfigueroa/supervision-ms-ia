@@ -192,7 +192,7 @@ async def test_anthropic_generar_json_con_salida_estructurada_y_esfuerzo() -> No
     assert datos == {"resumen": "Bien."}
     cuerpo = json.loads(pedidos[0].content)
     assert cuerpo["model"] == "claude-sonnet-5-5"
-    assert cuerpo["system"] == "reglas"
+    assert cuerpo["system"] == [{"type": "text", "text": "reglas", "cache_control": {"type": "ephemeral"}}]
     assert cuerpo["messages"] == [{"role": "user", "content": [{"type": "text", "text": "pregunta"}]}]
     assert cuerpo["thinking"] == {"type": "between_tools"}
     assert cuerpo["output_config"]["effort"] == "low"
@@ -260,8 +260,18 @@ async def test_anthropic_errores_son_llm_no_disponible(estado: int, tipo: str) -
     modelo, _ = _anthropic(
         lambda _: httpx2.Response(estado, json={"type": "error", "error": {"type": tipo, "message": "x"}})
     )
-    with pytest.raises(LlmNoDisponible):
+    with pytest.raises(LlmNoDisponible) as error:
         await modelo.generar_json([Mensaje.usuario("x")], ESQUEMA, OPCIONES)
+    assert error.value.reintentable is True  # 505: falla pasajera
+
+
+async def test_anthropic_400_no_es_reintentable() -> None:
+    modelo, _ = _anthropic(
+        lambda _: httpx2.Response(400, json={"type": "error", "error": {"type": "invalid_request_error", "message": "x"}})
+    )
+    with pytest.raises(LlmNoDisponible) as error:
+        await modelo.generar_json([Mensaje.usuario("x")], ESQUEMA, OPCIONES)
+    assert error.value.reintentable is False
 
 
 async def test_anthropic_sin_conexion_y_salida_no_valida() -> None:

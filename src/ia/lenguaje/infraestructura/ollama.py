@@ -113,10 +113,11 @@ class ModeloOllama:
             raise LlmTiempoAgotado("El modelo no respondió a tiempo.") from error
         except ResponseError as error:
             resultado = f"error_{error.status_code}"
-            raise LlmNoDisponible(f"Ollama respondió {error.status_code}.") from error
+            pasajero = error.status_code == 429 or error.status_code >= 500
+            raise LlmNoDisponible(f"Ollama respondió {error.status_code}.", reintentable=pasajero) from error
         except (ConnectionError, httpx.HTTPError) as error:
             resultado = "sin_conexion"
-            raise LlmNoDisponible("No se pudo conectar con Ollama.") from error
+            raise LlmNoDisponible("No se pudo conectar con Ollama.", reintentable=True) from error
         finally:
             registrar_llamada(
                 proveedor=PROVEEDOR,
