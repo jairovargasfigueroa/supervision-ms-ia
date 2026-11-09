@@ -83,7 +83,6 @@ def test_textos_sin_etiquetas_html() -> None:
         (reporte([hallazgo(situacion="<b></b>")]), "vacío"),
         ({**reporte(), "sql": "SELECT 1"}, "sql"),
         (reporte([hallazgo(obraId="x' OR 1=1")]), "obraId"),
-        (reporte([hallazgo()] * 11), "hallazgos"),
         (reporte([hallazgo(evidencia=[])]), "evidencia"),
         (reporte([hallazgo(severidad="CRITICA")]), "severidad"),
         ({"resumen": "", "hallazgos": [], "sugerencias": []}, "resumen"),
@@ -93,3 +92,22 @@ def test_reporte_invalido(datos: Any, fragmento: str) -> None:
     with pytest.raises(ReporteInvalido) as error:
         validar_reporte(datos, SEGUIMIENTO, VISTAS, CON_EXITO)
     assert any(fragmento in e for e in error.value.errores), error.value.errores
+
+
+def test_603_un_reporte_largo_se_ajusta_en_vez_de_rechazarse() -> None:
+    """Con muchas obras el modelo se pasa de los largos (el proveedor no acepta maxLength ni maxItems): el resumen se
+    corta en una oración completa y quedan los 10 primeros hallazgos con sus sugerencias."""
+    oracion = "La obra Mercado Municipal sigue muy atrasada por lluvias y falta de material en el periodo. "
+    situacion = "Plazo 71,7 %, avance 26,3 %; " * 20
+    hallazgos = [hallazgo(situacion=situacion) for _ in range(13)]
+    sugerencias = [sugerencia(hallazgo=i) for i in (0, 4, 11, 12)]
+    datos = {**reporte(hallazgos, sugerencias), "resumen": oracion * 12}
+
+    validado = validar_reporte(datos, SEGUIMIENTO, VISTAS, CON_EXITO)
+
+    assert len(validado.resumen) <= 600
+    assert validado.resumen.endswith(".")
+    assert len(validado.hallazgos) == 10
+    assert all(len(h.situacion) <= 300 for h in validado.hallazgos)
+    # las sugerencias de los hallazgos 11 y 12 (que quedaron fuera) se descartan
+    assert [s.hallazgo_indice for s in validado.sugerencias] == [0, 4]
