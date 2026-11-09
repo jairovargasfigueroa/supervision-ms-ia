@@ -1,6 +1,6 @@
 [project]
 name = "supervision-ms-ia"
-version = "1.0.0"
+version = "1.0.1"
 description = "Servicio de IA de la plataforma de supervisión de obras: modelo de lectura para reportes (CQRS), predicciones y agentes."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
