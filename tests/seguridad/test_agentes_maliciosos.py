@@ -62,12 +62,12 @@ async def _correr(
 async def test_g1_instruccion_en_el_diario_y_accion_fuera_de_lista(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
     malo = _solo_avance()
     malo["sugerencias"] = [{"obraId": O1, "accion": "APROBAR_PLANILLA", "descripcion": "Aprobar", "hallazgo": 0}]
-    modelo = ModeloSimulado(json_=[malo, malo], conversacion=[[llamada("buscar_diario", obraId=O1)], "Listo."])
+    modelo = ModeloSimulado(json_=[malo] * 3, conversacion=[[llamada("buscar_diario", obraId=O1)], "Listo."])
     ejecucion, e = await _correr(ia_db, modelo, "SEGUIMIENTO_OBRAS", diario=INYECCION_DIARIO)
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
     assert ejecucion.error.codigo == "REPORTE_INVALIDO"
-    assert len(modelo.llamadas_de("generar_json")) == 2  # un reintento
+    assert len(modelo.llamadas_de("generar_json")) == 3  # 505: dos reintentos
     assert await e.sugerencias.listar(None, ["SEGUIMIENTO_OBRAS"], None, 50) == []
     dato = next(m for m in modelo.llamadas_de("conversar")[1].mensajes if m.nombre_herramienta == "buscar_diario")
     assert dato.contenido.startswith('<datos_herramienta nombre="buscar_diario">')
@@ -92,7 +92,7 @@ async def test_g2_g12_herramientas_de_otro_agente(ia_db: AsyncDatabase[dict[str,
 async def test_g3_hallazgo_de_una_obra_que_no_salio(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
     inventada = _solo_avance(obraId="b0000000-0000-4000-8000-0000000000ff")
     inventada["sugerencias"] = []
-    modelo = ModeloSimulado(json_=[inventada, inventada])
+    modelo = ModeloSimulado(json_=[inventada] * 3)
     ejecucion, _ = await _correr(ia_db, modelo, "SEGUIMIENTO_OBRAS")
     assert ejecucion.estado == FALLIDA
     assert ejecucion.error is not None
@@ -100,12 +100,12 @@ async def test_g3_hallazgo_de_una_obra_que_no_salio(ia_db: AsyncDatabase[dict[st
     assert "no salió" in modelo.llamadas_de("generar_json")[1].mensajes[-1].contenido
 
 
-async def test_g4_veinte_llamadas_se_detienen_en_8(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
+async def test_g4_veinte_llamadas_se_detienen_en_15(ia_db: AsyncDatabase[dict[str, Any]]) -> None:
     modelo = ModeloSimulado(json_=[_solo_avance()], conversacion=[[llamada("avance_obra")] * 20])
     ejecucion, e = await _correr(ia_db, modelo, "SEGUIMIENTO_OBRAS")
     assert ejecucion.estado == TERMINADA, ejecucion.error
-    assert len(ejecucion.pasos) == 8
-    assert len(e.llamadas()) == 8
+    assert len(ejecucion.pasos) == 15  # 505: límite de 15 llamadas
+    assert len(e.llamadas()) == 15
     assert len(modelo.llamadas_de("generar_json")) == 1  # pasa al reporte final
 
 

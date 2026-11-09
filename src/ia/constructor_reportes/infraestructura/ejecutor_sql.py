@@ -55,6 +55,10 @@ class EjecutorSql:
     async def obras_por_nombre(self) -> list[str]:
         return [str(f[0]) for f in await self.filas(seleccion_obras_por_nombre())]
 
+    async def nombres_de_obras(self) -> list[str]:
+        """505: los nombres de todas las obras (para las dudas del código)."""
+        return [str(f[1]) for f in await self.filas(seleccion_obras_por_nombre())]
+
     async def filas(self, consulta: Select[Any]) -> Sequence[Any]:
         try:
             async with self._motor.connect() as conexion:

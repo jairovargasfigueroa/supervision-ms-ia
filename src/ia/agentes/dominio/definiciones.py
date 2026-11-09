@@ -16,10 +16,18 @@ CONTROL_COBROS: Final = "CONTROL_COBROS"
 
 CONSULTAR_REPORTE: Final = "consultar_reporte"
 
+CONSUMO_VS_PREVISTO: Final = "consumo_vs_previsto"
+"""Paso compuesto de Control de materiales (505): `avance_obra` y `consumos_partida` del periodo para todas las obras;
+al modelo le llega solo el cruce (`consumo_previsto.cruzar`)."""
+HERRAMIENTAS_CONSUMO_VS_PREVISTO: Final = ("avance_obra", "consumos_partida")
+PERIODO_ACTUAL: Final = "$periodo_actual"
+"""En los argumentos de un paso inicial, se reemplaza por el periodo actual de La Paz (505)."""
+
 
 @dataclass(frozen=True)
 class PasoInicial:
     herramienta: str
+    """Una herramienta del agente o el paso compuesto `consumo_vs_previsto`."""
     argumentos: Mapping[str, Any]
 
 
@@ -86,15 +94,16 @@ MATERIALES = DefinicionAgente(
     instrucciones=(
         "Revisa el stock de las obras en ejecución. Identifica materiales en estado BAJO o JUSTO, salidas que "
         "superaron el stock, consumos atípicos pendientes de revisión y, para el periodo actual, partidas donde el "
-        "material usado supera en más de 20 % al previsto (usado > 1,20 × previsto). Reporta solo lo que puedas "
-        "respaldar con datos."
+        "material usado supera en más de 20 % al previsto (usado > 1,20 × previsto). El cruce del consumo contra lo "
+        "previsto del periodo actual ya viene calculado en los pasos iniciales (excesos y salidasSinStock): úsalo y "
+        "cita consumos_partida como evidencia. Reporta solo lo que puedas respaldar con datos."
     ),
     herramientas=("stock_obra", "consumos_partida", "avance_obra", "consumos_atipicos", CONSULTAR_REPORTE),
     conjuntos=("CONSUMO_MATERIAL", "MOVIMIENTOS"),
     pasos_iniciales=(
         PasoInicial("stock_obra", MappingProxyType({"estados": ["BAJO", "JUSTO"]})),
-        PasoInicial("avance_obra", MappingProxyType({})),
         PasoInicial("consumos_atipicos", MappingProxyType({})),
+        PasoInicial(CONSUMO_VS_PREVISTO, MappingProxyType({"periodo": PERIODO_ACTUAL})),
     ),
     tipos=("STOCK_BAJO", "STOCK_JUSTO", "CONSUMO_EXCEDIDO", "SALIDA_SIN_STOCK", "CONSUMO_ATIPICO"),
     acciones=_acciones(

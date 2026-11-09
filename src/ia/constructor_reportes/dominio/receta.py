@@ -7,7 +7,7 @@ los niveles). Que cada clave exista en el conjunto y en el modo, y los valores d
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
 CONJUNTOS = ("OBRAS", "CONSUMO_MATERIAL", "MOVIMIENTOS", "COBROS", "PLANILLAS", "CONSUMOS_ATIPICOS")
 NINGUNO = "NINGUNO"
@@ -28,9 +28,13 @@ class _Estricto(BaseModel):
 class FiltroReceta(_Estricto):
     campo: StrictStr = CLAVE
     operador: Operador
-    valor: StrictBool | StrictInt | StrictStr | Annotated[list[StrictStr], Field(min_length=1, max_length=20)] = Field(
-        description="texto, número, booleano o lista de 1 a 20 textos"
-    )
+    valor: (
+        StrictBool
+        | StrictInt
+        | StrictFloat
+        | StrictStr
+        | Annotated[list[StrictStr], Field(min_length=1, max_length=20)]
+    ) = Field(description="texto, número, booleano o lista de 1 a 20 textos")
 
 
 class MetricaReceta(_Estricto):

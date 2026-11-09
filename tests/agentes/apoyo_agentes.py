@@ -2,7 +2,7 @@
 del contrato de la 501), MongoDB real, el `ClienteMcp` real con un Keycloak simulado y `ModeloSimulado`."""
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,6 +13,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from dobles.servidor_mcp import HerramientaPrueba, ServidorPrueba, servidores_en_marcha
 from ia.agentes.aplicacion.ejecutor import EjecutorAgente, Limites
+from ia.agentes.aplicacion.puertos import ConectorMcp
 from ia.agentes.dominio.ejecucion import EN_CURSO, MANUAL, Ejecucion
 from ia.agentes.infraestructura.conector_mcp import ConectorMcpReal
 from ia.agentes.infraestructura.repositorio_mongo import RepositorioEjecucionesMongo, RepositorioSugerenciasMongo
@@ -169,14 +170,17 @@ async def entorno(
     modelo: ModeloLenguaje,
     limites: Limites | None = None,
     servidores: dict[str, ServidorPrueba] | None = None,
+    envolver: Callable[[ConectorMcp], ConectorMcp] | None = None,
 ) -> AsyncIterator[Entorno]:
     await asegurar_indices(ia_db)
     servidores = servidores or servidores_de_prueba()
-    conector = ConectorMcpReal(
+    conector: ConectorMcp = ConectorMcpReal(
         {n: s.url for n, s in servidores.items()},
         token_de_prueba(),
         {n: s.transporte() for n, s in servidores.items()},
     )
+    if envolver is not None:
+        conector = envolver(conector)
     reloj = RelojFijo(AHORA)
     ejecuciones = RepositorioEjecucionesMongo(ia_db)
     sugerencias = RepositorioSugerenciasMongo(ia_db)

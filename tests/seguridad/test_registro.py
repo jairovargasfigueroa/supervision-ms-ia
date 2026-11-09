@@ -16,7 +16,7 @@ from ia.lenguaje.infraestructura.ollama import ModeloOllama
 
 LINEA = re.compile(
     r"Llamada al modelo: proveedor=ollama modelo=qwen3:8b operacion=(\w+) contexto=(\S+) duracionMs=\d+ "
-    r"tokensEntrada=(\S+) tokensSalida=(\S+) resultado=(\w+)"
+    r"tokensEntrada=(\S+) tokensSalida=(\S+) tokensCache=\S+ resultado=(\w+)"
 )
 
 

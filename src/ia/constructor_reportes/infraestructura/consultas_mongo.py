@@ -57,6 +57,7 @@ def _documento(c: ConsultaGuardada) -> dict[str, Any]:
         "modelo": c.modelo,
         "duracion_ms": c.duracion_ms,
         "creada_en": c.creada_en,
+        "conversacion_id": c.conversacion_id,
     }
 
 
@@ -77,5 +78,6 @@ def _consulta(d: dict[str, Any]) -> ConsultaGuardada:
         proveedor_llm=str(d.get("proveedor_llm") or ""),
         modelo=str(d.get("modelo") or ""),
         duracion_ms=int(d.get("duracion_ms") or 0),
+        conversacion_id=d.get("conversacion_id"),
         creada_en=creada if creada.tzinfo else creada.replace(tzinfo=UTC),
     )

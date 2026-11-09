@@ -18,7 +18,15 @@ class ErrorLlm(Exception):
 
 
 class LlmNoDisponible(ErrorLlm):
-    """Conexión, `5xx`, `429` o «sobrecargado» del proveedor."""
+    """Conexión, `5xx`, `429` o «sobrecargado» del proveedor (y cualquier otro rechazo de la API).
+
+    `reintentable` (505): la falla es pasajera (conexión, `429`, `5xx`, `529`) y vale la pena volver a intentar;
+    un `400` (pedido mal armado) no lo es.
+    """
+
+    def __init__(self, mensaje: str, *, reintentable: bool = False) -> None:
+        super().__init__(mensaje)
+        self.reintentable = reintentable
 
 
 class LlmTiempoAgotado(ErrorLlm):
@@ -63,11 +71,13 @@ def registrar_llamada(
     opciones: Opciones,
     tokens_entrada: int | None = None,
     tokens_salida: int | None = None,
+    tokens_cache: int | None = None,
 ) -> None:
-    """Una línea por llamada al modelo (504): nunca el texto de los mensajes, la clave de la API ni tokens."""
+    """Una línea por llamada al modelo (504): nunca el texto de los mensajes, la clave de la API ni tokens.
+    `tokens_cache` (505): tokens de entrada leídos de la caché del proveedor (Anthropic)."""
     registro.info(
         "Llamada al modelo: proveedor=%s modelo=%s operacion=%s contexto=%s duracionMs=%d tokensEntrada=%s "
-        "tokensSalida=%s resultado=%s",
+        "tokensSalida=%s tokensCache=%s resultado=%s",
         proveedor,
         modelo,
         operacion,
@@ -75,6 +85,7 @@ def registrar_llamada(
         duracion_ms,
         "-" if tokens_entrada is None else tokens_entrada,
         "-" if tokens_salida is None else tokens_salida,
+        "-" if tokens_cache is None else tokens_cache,
         resultado,
     )
 

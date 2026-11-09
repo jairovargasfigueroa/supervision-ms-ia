@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Protocol
 
+from ia.constructor_reportes.dominio.conversacion import Conversacion
 from ia.constructor_reportes.dominio.validacion import RecetaValidada
 
 
@@ -78,6 +79,8 @@ class ConsultaGuardada:
     modelo: str
     duracion_ms: int
     creada_en: datetime
+    conversacion_id: str | None = None
+    """505: la conversación del asistente a la que pertenece."""
 
 
 class RepositorioConsultas(Protocol):
@@ -91,4 +94,30 @@ class RepositorioConsultas(Protocol):
 class LimitadorConsultas(Protocol):
     async def contar(self, usuario_id: str, ahora: datetime) -> tuple[int, int]:
         """Suma 1 a la cuenta del minuto (atómico). Devuelve (cuenta, segundos hasta el próximo minuto)."""
+        ...
+
+
+class RepositorioConversaciones(Protocol):
+    """505: `ia_db.conversacion_reporte` (TTL de 30 min sin uso)."""
+
+    async def obtener(self, conversacion_id: str) -> Conversacion | None:
+        """`None` si no existe o ya expiró. `ReportesNoDisponibles` si `ia_db` no responde."""
+        ...
+
+    async def guardar(self, conversacion: Conversacion) -> None: ...
+
+
+class CacheRecetas(Protocol):
+    """505: `ia_db.receta_cache`: receta validada por pedido normalizado y día (24 h)."""
+
+    async def obtener(self, clave: str) -> dict[str, Any] | None: ...
+
+    async def guardar(self, clave: str, receta: dict[str, Any], expira_en: datetime) -> None: ...
+
+
+class NombresObras(Protocol):
+    """505: los nombres de las obras, para las dudas del código (nombres ambiguos o inexistentes)."""
+
+    async def nombres_de_obras(self) -> list[str]:
+        """Todos los nombres, por orden alfabético. `ReportesNoDisponibles` si la base no responde."""
         ...

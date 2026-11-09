@@ -28,6 +28,7 @@ TEXTO_PERMITIDO = "SET LOCAL statement_timeout = '5s'"
 CON_MONGO = {
     "constructor_reportes/infraestructura/atipicos_mongo.py",
     "constructor_reportes/infraestructura/consultas_mongo.py",
+    "constructor_reportes/infraestructura/conversaciones_mongo.py",
     "constructor_reportes/infraestructura/limite_mongo.py",
     "agentes/infraestructura/repositorio_mongo.py",
     "agentes/infraestructura/worker.py",
@@ -117,7 +118,11 @@ def test_mongodb_solo_en_sus_repositorios_y_los_filtros_del_catalogo_solo_en_ati
         modulos = modulos_importados(ast.parse(fuente))
         if usa(modulos, MODULOS_MONGO) or "AsyncDatabase" in fuente:
             con_mongo.add(ruta)
-            if any(m.startswith("ia.constructor_reportes.dominio") for m in modulos) or "ConsultaResuelta" in fuente:
+            # 505: el estado de la conversación (`dominio.conversacion`) no son filtros del catálogo
+            del_dominio = [m for m in modulos if m.startswith("ia.constructor_reportes.dominio")]
+            if any(m != "ia.constructor_reportes.dominio.conversacion" for m in del_dominio) or (
+                "ConsultaResuelta" in fuente
+            ):
                 del_catalogo.add(ruta)
     assert con_mongo == CON_MONGO
     assert del_catalogo == FILTROS_DEL_CATALOGO

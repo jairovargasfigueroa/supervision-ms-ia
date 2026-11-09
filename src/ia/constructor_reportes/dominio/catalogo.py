@@ -40,6 +40,7 @@ V_PERIODO = "PERIODO"  # AAAA-MM
 V_FECHA = "FECHA"  # AAAA-MM-DD
 V_ENTERO = "ENTERO"
 V_VERDADERO = "VERDADERO"  # solo `true`
+V_NUMERO = "NUMERO"  # número (entero o con decimales), con DESDE (≥) y HASTA (≤) (505)
 
 IGUAL_EN = frozenset({"IGUAL", "EN"})
 RANGO = frozenset({"DESDE", "HASTA"})
@@ -72,6 +73,8 @@ class FiltroCatalogo:
     modos: frozenset[str] = AMBOS
     minimo: int = 0
     maximo: int = 0
+    futuro: bool = False
+    """Fechas: acepta fechas futuras (por ejemplo, el vencimiento de un cobro)."""
 
 
 @dataclass(frozen=True)
@@ -113,15 +116,34 @@ class ConjuntoCatalogo:
 
 # --- Filtros comunes ----------------------------------------------------------------------------------------------
 
-F_OBRA = FiltroCatalogo("obra", "Obra", frozenset({"CONTIENE"}), V_TEXTO)
+TEXTO_O_LISTA = frozenset({"CONTIENE", "EN"})
+"""505: «contiene» un texto o «es uno de» varios textos (cada uno por «contiene»; se unen)."""
+
+F_OBRA = FiltroCatalogo("obra", "Obra", TEXTO_O_LISTA, V_TEXTO)
 F_OBRA_ID = FiltroCatalogo("obraId", "Obra (id)", IGUAL_EN, V_UUID, modos=frozenset({MCP}))
 F_ZONA = FiltroCatalogo("zona", "Zona", IGUAL_EN, V_ENUM, ZONAS)
-F_CLIENTE = FiltroCatalogo("cliente", "Cliente", frozenset({"CONTIENE"}), V_TEXTO, modos=frozenset({REST}))
+F_CLIENTE = FiltroCatalogo("cliente", "Cliente", TEXTO_O_LISTA, V_TEXTO, modos=frozenset({REST}))
 F_CLIENTE_ID = FiltroCatalogo("clienteId", "Cliente (id)", IGUAL_EN, V_UUID, modos=frozenset({MCP}))
 F_PERIODO = FiltroCatalogo("periodo", "Periodo", frozenset({"IGUAL", "DESDE", "HASTA"}), V_PERIODO)
-F_MATERIAL = FiltroCatalogo("material", "Material", frozenset({"CONTIENE"}), V_TEXTO, modos=frozenset({REST}))
+F_MATERIAL = FiltroCatalogo("material", "Material", TEXTO_O_LISTA, V_TEXTO, modos=frozenset({REST}))
 F_MATERIAL_ID = FiltroCatalogo("materialId", "Material (id)", IGUAL_EN, V_ID)
 F_FECHA = FiltroCatalogo("fecha", "Fecha", RANGO, V_FECHA)
+F_NIVEL_RIESGO = FiltroCatalogo(
+    "nivelRiesgo", "Nivel de riesgo", IGUAL_EN, V_ENUM, ("BAJO", "MEDIO", "ALTO", "SIN_DATOS")
+)
+F_SOLO_EN_RIESGO = FiltroCatalogo("soloEnRiesgo", "Solo en riesgo", frozenset({"IGUAL"}), V_VERDADERO)
+DE_LA_OBRA_RIESGO = (F_NIVEL_RIESGO, F_SOLO_EN_RIESGO)
+"""505: el riesgo de la obra, en todos los conjuntos."""
+
+
+def numero(clave: str, titulo: str) -> FiltroCatalogo:
+    """Filtro numérico con DESDE (≥) y HASTA (≤) (505)."""
+    return FiltroCatalogo(clave, titulo, RANGO, V_NUMERO)
+
+
+def fecha(clave: str, titulo: str, *, futuro: bool = False) -> FiltroCatalogo:
+    return FiltroCatalogo(clave, titulo, RANGO, V_FECHA, futuro=futuro)
+
 
 C_OBRA = CampoCatalogo("obra", "Obra", TEXTO, dimension=True)
 C_ZONA = CampoCatalogo("zona", "Zona", TEXTO, dimension=True)
@@ -135,7 +157,11 @@ COLUMNA_UNIDAD = ("unidad", "Unidad", TEXTO)
 OBRAS = ConjuntoCatalogo(
     conjunto="OBRAS",
     titulo="Obras",
-    descripcion="Avance, plazo, diferencia, «En riesgo», riesgo de retraso (402) y monto de contrato de cada obra.",
+    descripcion=(
+        "Avance, plazo, diferencia, «En riesgo», riesgo de retraso (402) y monto de contrato de cada obra, y por obra: "
+        "planillas observadas y aprobadas, cobros vencidos (cantidad y monto), monto por cobrar (pendiente + vencido) "
+        "y salidas de material que superaron el stock. Úsalo para pedidos que cruzan temas por obra."
+    ),
     campos=(
         C_OBRA,
         C_ZONA,
@@ -150,6 +176,13 @@ OBRAS = ConjuntoCatalogo(
         CampoCatalogo("diferencia", "Diferencia", NUMERO, funciones=GENERALES),
         CampoCatalogo("en_riesgo", "En riesgo", BOOLEANO),
         CampoCatalogo("riesgo_pct", "Riesgo de retraso %", PORCENTAJE, funciones=GENERALES),
+        # 505: datos de otros temas por obra
+        CampoCatalogo("planillas_observadas", "Planillas observadas", NUMERO, funciones=GENERALES),
+        CampoCatalogo("planillas_aprobadas", "Planillas aprobadas", NUMERO, funciones=GENERALES),
+        CampoCatalogo("cobros_vencidos", "Cobros vencidos", NUMERO, funciones=GENERALES),
+        CampoCatalogo("monto_vencido", "Monto vencido", MONTO, funciones=GENERALES),
+        CampoCatalogo("monto_por_cobrar", "Monto por cobrar", MONTO, funciones=GENERALES),
+        CampoCatalogo("salidas_sin_stock", "Salidas sin stock", NUMERO, funciones=GENERALES),
     ),
     filtros=(
         F_OBRA,
@@ -158,8 +191,20 @@ OBRAS = ConjuntoCatalogo(
         F_CLIENTE,
         F_CLIENTE_ID,
         FiltroCatalogo("estado", "Estado", IGUAL_EN, V_ENUM, ("SIN_CONTRATO", "EN_EJECUCION")),
-        FiltroCatalogo("nivelRiesgo", "Nivel de riesgo", IGUAL_EN, V_ENUM, ("BAJO", "MEDIO", "ALTO", "SIN_DATOS")),
-        FiltroCatalogo("soloEnRiesgo", "Solo en riesgo", frozenset({"IGUAL"}), V_VERDADERO),
+        *DE_LA_OBRA_RIESGO,
+        numero("avancePct", "Avance %"),
+        numero("plazoPct", "Plazo %"),
+        numero("diferencia", "Diferencia (plazo − avance)"),
+        numero("riesgoPct", "Riesgo de retraso %"),
+        numero("montoContrato", "Monto del contrato"),
+        numero("plazoDias", "Plazo (días)"),
+        fecha("fechaInicio", "Inicio"),
+        numero("planillasObservadas", "Planillas observadas"),
+        numero("planillasAprobadas", "Planillas aprobadas"),
+        numero("cobrosVencidos", "Cobros vencidos"),
+        numero("montoVencido", "Monto vencido"),
+        numero("montoPorCobrar", "Monto por cobrar"),
+        numero("salidasSinStock", "Salidas sin stock"),
     ),
     columnas_defecto=("obra", "zona", "estado", "avance_pct", "plazo_pct", "diferencia", "en_riesgo"),
     orden_defecto=(("diferencia", "DESC"), ("obra", "ASC")),
@@ -167,6 +212,7 @@ OBRAS = ConjuntoCatalogo(
         "¿Cómo va el avance de las obras?",
         "Obras con riesgo alto de la zona norte",
         "Promedio de avance por zona",
+        "Obras con planillas observadas y riesgo alto",
     ),
 )
 
@@ -187,7 +233,17 @@ CONSUMO_MATERIAL = ConjuntoCatalogo(
         CampoCatalogo("monto", "Monto referencial", MONTO, funciones=GENERALES, columna=False),
         CampoCatalogo("salidas", "Salidas", NUMERO, funciones=GENERALES, columna=False),
     ),
-    filtros=(F_OBRA, F_OBRA_ID, F_ZONA, F_CLIENTE, F_CLIENTE_ID, F_MATERIAL, F_MATERIAL_ID, F_PERIODO),
+    filtros=(
+        F_OBRA,
+        F_OBRA_ID,
+        F_ZONA,
+        F_CLIENTE,
+        F_CLIENTE_ID,
+        F_MATERIAL,
+        F_MATERIAL_ID,
+        F_PERIODO,
+        *DE_LA_OBRA_RIESGO,
+    ),
     columnas_defecto=(),
     orden_defecto=(("suma_monto", "DESC"),),
     metricas_defecto=((SUMA, "cantidad"), (SUMA, "monto"), (SUMA, "salidas")),
@@ -223,6 +279,8 @@ MOVIMIENTOS = ConjuntoCatalogo(
         FiltroCatalogo("soloSuperaStock", "Solo los que superaron el stock", frozenset({"IGUAL"}), V_VERDADERO),
         F_PERIODO,
         F_FECHA,
+        numero("cantidad", "Cantidad"),
+        *DE_LA_OBRA_RIESGO,
     ),
     columnas_defecto=("fecha", "obra", "material", "tipo", "cantidad", "supera_stock"),
     orden_defecto=(("fecha", "DESC"),),
@@ -266,6 +324,12 @@ COBROS = ConjuntoCatalogo(
             maximo=90,
         ),
         FiltroCatalogo("periodo", "Mes de emisión", frozenset({"IGUAL", "DESDE", "HASTA"}), V_PERIODO),
+        numero("monto", "Monto neto"),
+        numero("diasParaVencer", "Días para vencer (negativo: ya vencido)"),
+        fecha("emitidoEn", "Emitido"),
+        fecha("venceEn", "Vence", futuro=True),
+        fecha("pagadoEn", "Fecha de pago"),
+        *DE_LA_OBRA_RIESGO,
     ),
     columnas_defecto=("numero", "obra", "monto", "emitido_en", "vence_en", "estado"),
     orden_defecto=(("emitido_en", "DESC"), ("numero", "DESC")),
@@ -306,6 +370,10 @@ PLANILLAS = ConjuntoCatalogo(
         FiltroCatalogo("estado", "Estado", IGUAL_EN, V_ENUM, ("APROBADA", "OBSERVADA")),
         F_PERIODO,
         FiltroCatalogo("aprobadaEn", "Fecha de aprobación", RANGO, V_FECHA),
+        numero("neto", "Neto"),
+        numero("vecesObservada", "Veces observada"),
+        numero("avancePeriodoPct", "Avance del periodo %"),
+        *DE_LA_OBRA_RIESGO,
     ),
     columnas_defecto=("obra", "periodo", "estado", "neto", "veces_observada", "ultimo_motivo"),
     orden_defecto=(("periodo", "DESC"),),
@@ -341,6 +409,7 @@ CONSUMOS_ATIPICOS = ConjuntoCatalogo(
         FiltroCatalogo("estadoRevision", "Revisión", IGUAL_EN, V_ENUM, ("PENDIENTE", "NORMAL", "CONFIRMADO")),
         F_PERIODO,
         F_FECHA,
+        *DE_LA_OBRA_RIESGO,
     ),
     columnas_defecto=("fecha", "obra", "material", "cantidad", "puntaje", "motivos", "estado_revision"),
     orden_defecto=(("puntaje", "DESC"),),
@@ -401,10 +470,13 @@ def describir_catalogo(modo: str) -> str:
                 V_ID: "id de material",
                 V_ENUM: " | ".join(f.opciones),
                 V_PERIODO: "AAAA-MM",
-                V_FECHA: "AAAA-MM-DD",
+                V_FECHA: "AAAA-MM-DD" + (", puede ser futura" if f.futuro else ""),
                 V_ENTERO: f"entero de {f.minimo} a {f.maximo}",
                 V_VERDADERO: "true",
+                V_NUMERO: "número",
             }[f.valor]
+            if f.valor == V_TEXTO and "EN" in f.operadores:
+                valores = "texto de 2 a 100; con EN, lista de textos"
             filtros.append(f"{f.clave} [{'/'.join(sorted(f.operadores))}: {valores}]")
         lineas.append(f"- filtros: {'; '.join(filtros)}")
         lineas.append(f"- agruparPor (dimensiones): {', '.join(conjunto.dimensiones)}")
