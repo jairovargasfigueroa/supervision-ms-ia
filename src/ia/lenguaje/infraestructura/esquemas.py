@@ -1,9 +1,10 @@
 """JSON Schema que acepta cada proveedor para herramientas y salida estructurada.
 
 Los esquemas estrictos de Anthropic exigen `additionalProperties: false` en cada objeto y no aceptan `minLength`,
-`maxLength`, `minimum`, `maximum` ni `minItems` mayor que 1 (verificado el 31/10/2026), ni `maxItems` (la API
-respondió «For 'array' type, property 'maxItems' is not supported» el 09/11/2026, en la nube). Se quitan del esquema
-que se envía; Pydantic los sigue aplicando al validar la respuesta.
+`maxLength`, `minimum`, `maximum` ni `minItems` mayor que 1 (verificado el 31/10/2026), ni `maxItems` ni
+`uniqueItems` (la API respondió «For 'array' type, property '…' is not supported» el 09/11/2026, en la nube: el
+esquema de la receta y la herramienta `planillas_estado`). Se quitan del esquema que se envía; Pydantic los sigue
+aplicando al validar la respuesta, y los argumentos de las herramientas se validan contra el contrato (502).
 """
 
 import copy
@@ -17,6 +18,7 @@ _NO_ACEPTA_ANTHROPIC = (
     "exclusiveMinimum",
     "exclusiveMaximum",
     "maxItems",
+    "uniqueItems",
 )
 
 
