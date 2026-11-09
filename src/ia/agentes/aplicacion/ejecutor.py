@@ -55,7 +55,16 @@ from ia.agentes.dominio.ejecucion import (
     Paso,
     Sugerencia,
 )
-from ia.agentes.dominio.reporte import ReporteInvalido, ReporteValidado, esquema_reporte, validar_reporte
+from ia.agentes.dominio.reporte import (
+    HALLAZGOS_MAXIMOS,
+    RESUMEN_MAXIMO,
+    SUGERENCIAS_MAXIMAS,
+    TEXTO_MAXIMO,
+    ReporteInvalido,
+    ReporteValidado,
+    esquema_reporte,
+    validar_reporte,
+)
 from ia.comun.tiempo import Reloj
 from ia.lenguaje.aplicacion.puerto import ErrorLlm, ModeloLenguaje, SalidaNoValida, registrar_validacion
 from ia.lenguaje.dominio.mensajes import DefinicionHerramienta, Mensaje, Opciones, Rol
@@ -168,7 +177,12 @@ class EjecutorAgente:
                 bloques.append((await self._llamar(estado, paso.herramienta, argumentos)).contenido)
         mensajes = [Mensaje.sistema(self._sistema(agente)), Mensaje.usuario(self._inicial(estado, bloques))]
         opciones = Opciones(
-            tiempo_maximo_s=self._limites.llm_s, temperatura=0.1, esfuerzo="MEDIO", contexto=ejecucion.id
+            # 603: con muchas obras el reporte es largo; 8192 fichas para que no salga cortado
+            tiempo_maximo_s=self._limites.llm_s,
+            temperatura=0.1,
+            esfuerzo="MEDIO",
+            contexto=ejecucion.id,
+            max_tokens=8192,
         )
         definiciones = [self._definicion(agente, nombre, h) for nombre, (_, h) in estado.disponibles.items()]
 
@@ -430,7 +444,11 @@ class EjecutorAgente:
             Mensaje.usuario(
                 "Escribe el reporte final. Cada obraId debe ser una obra que salió en los datos de las herramientas; "
                 "cada evidencia cita una herramienta que llamaste con éxito y el dato; cada sugerencia usa una acción "
-                "de la lista y el índice (desde 0) del hallazgo que la origina."
+                "de la lista y el índice (desde 0) del hallazgo que la origina. "
+                # 603: el proveedor no acepta los largos del esquema: se dicen aquí
+                f"Límites: el resumen, {RESUMEN_MAXIMO} caracteres como máximo (unas 4 oraciones); como mucho "
+                f"{HALLAZGOS_MAXIMOS} hallazgos (los más importantes primero) y {SUGERENCIAS_MAXIMAS} sugerencias; "
+                f"situación, causa y descripción, {TEXTO_MAXIMO} caracteres como máximo cada una."
             ),
         ]
         for intento in range(1, INTENTOS_REPORTE + 1):

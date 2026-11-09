@@ -98,6 +98,63 @@ class ReporteInvalido(Exception):
         self.errores = errores
 
 
+HALLAZGOS_MAXIMOS = 10
+SUGERENCIAS_MAXIMAS = 10
+EVIDENCIAS_MAXIMAS = 5
+
+
+def _cortar(texto: Any, maximo: int) -> Any:
+    """Un texto más largo que `maximo`, cortado en la última oración completa (o palabra) que cabe, con «…»."""
+    if not isinstance(texto, str) or len(texto) <= maximo:
+        return texto
+    corte = texto[: maximo - 1]
+    fin = max(corte.rfind(". "), corte.rfind("; "))
+    if fin >= maximo // 2:
+        return corte[: fin + 1]
+    espacio = corte.rfind(" ")
+    return (corte[:espacio] if espacio >= maximo // 2 else corte).rstrip(" ,;:") + "…"
+
+
+def ajustar_largos(datos: Any) -> Any:
+    """603: el proveedor no acepta `maxLength` ni `maxItems` en el esquema (se quitan), así que el modelo puede pasarse
+    de los largos y las cantidades del reporte cuando hay muchas obras. Antes de validar: textos cortados en una
+    oración completa, los primeros 10 hallazgos (y solo las sugerencias de esos hallazgos), las primeras 10 sugerencias
+    y las primeras 5 evidencias. No cambia nada más: obras, tipos, acciones y evidencias se validan igual."""
+    if not isinstance(datos, dict):
+        return datos
+    salida = dict(datos)
+    salida["resumen"] = _cortar(salida.get("resumen"), RESUMEN_MAXIMO)
+    hallazgos = salida.get("hallazgos")
+    total_hallazgos = len(hallazgos) if isinstance(hallazgos, list) else 0
+    if isinstance(hallazgos, list):
+        recortados = []
+        for h in hallazgos[:HALLAZGOS_MAXIMOS]:
+            if isinstance(h, dict):
+                h = dict(h)
+                for campo in ("situacion", "causaProbable"):
+                    h[campo] = _cortar(h.get(campo), TEXTO_MAXIMO)
+                evidencia = h.get("evidencia")
+                if isinstance(evidencia, list):
+                    h["evidencia"] = [
+                        {**e, "dato": _cortar(e.get("dato"), DATO_MAXIMO)} if isinstance(e, dict) else e
+                        for e in evidencia[:EVIDENCIAS_MAXIMAS]
+                    ]
+            recortados.append(h)
+        salida["hallazgos"] = recortados
+    sugerencias = salida.get("sugerencias")
+    if isinstance(sugerencias, list):
+        # Solo se descartan las sugerencias de los hallazgos que este ajuste dejó fuera; un índice que nunca existió
+        # sigue siendo un error del reporte
+        fuera = range(HALLAZGOS_MAXIMOS, total_hallazgos)
+        sugerencias = [
+            {**s, "descripcion": _cortar(s.get("descripcion"), TEXTO_MAXIMO)} if isinstance(s, dict) else s
+            for s in sugerencias
+            if not (isinstance(s, dict) and isinstance(s.get("hallazgo"), int) and s["hallazgo"] in fuera)
+        ]
+        salida["sugerencias"] = sugerencias[:SUGERENCIAS_MAXIMAS]
+    return salida
+
+
 def validar_reporte(
     datos: Any,
     agente: DefinicionAgente,
@@ -109,7 +166,7 @@ def validar_reporte(
     `obras_vistas`: obraId → nombre (o `None`) de las obras que salieron en los resultados de esta ejecución.
     """
     try:
-        reporte = ReporteAgente.model_validate(datos)
+        reporte = ReporteAgente.model_validate(ajustar_largos(datos))
     except ValidationError as error:
         raise ReporteInvalido(
             [f"{'.'.join(str(p) for p in e.get('loc', ())) or 'reporte'}: {e.get('msg', '')}" for e in error.errors()][
