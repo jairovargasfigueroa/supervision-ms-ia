@@ -83,15 +83,18 @@ Las consultas del riesgo leen MongoDB (`prediccion`) y `reportes_db` (visibilida
 
 ### Reportes por voz: constructor de reportes (503)
 
-Los tres son solo para `admin` y `gerente` (los reportes cruzan todas las obras); `residente` recibe `403`. Detalle del catálogo, la receta y los atajos: `docs/specs/503-reportes-voz/diseno.md` de la carpeta general.
+Los tres son solo para `admin` y `gerente` (los reportes cruzan todas las obras); `residente` recibe `403`. Detalle del catálogo, la receta y los atajos: `docs/specs/503-reportes-voz/diseno.md` de la carpeta general; la conversación y el catálogo ampliado: `docs/specs/505-asistente-reportes/diseno.md`.
 
 ```
-### POST /consultas-reporte · 503
+### POST /consultas-reporte · 503 y 505
 Servicio: IA · Quién llama: Gateway (60 s, sin reintento) · Roles: `admin`, `gerente`
-Recibe exactamente uno de `texto` (3 a 500 caracteres) o `atajo`; `directorio` lo agrega el gateway (opcional; hasta 1000 clientes):
+Recibe exactamente uno de `texto` (3 a 500 caracteres; de 1 a 500 con `conversacionId`) o `atajo`; `conversacionId` (505, opcional, uuid) continúa una conversación (sin él empieza una nueva; un atajo siempre empieza una nueva); `directorio` lo agrega el gateway (opcional; hasta 1000 clientes):
   { "texto": "¿Cuánto cemento se usó en Las Palmas este trimestre?", "directorio": { "clientes": [{ "id": "uuid-keycloak", "nombre": "Constructora Andina SRL" }] } }
   { "atajo": "COBROS_POR_VENCER", "directorio": { "clientes": [] } }
-Devuelve: 200 {
+  { "texto": "IP-30", "conversacionId": "uuid" }
+Devuelve (505): 200 { "conversacionId": "uuid", "tipo": "REPORTE" | "ACLARACION", "consulta": ConsultaReporte | null,
+                      "aclaracion": { "pregunta": "…", "opciones": ["Cemento IP-30", "Cemento cola", "Todos"], "preguntasRestantes": 4 } | null }
+`opciones`: de 0 a 6 textos de hasta 60 caracteres. Con REPORTE, `consulta` es: {
   "id": "uuid", "texto": "…", "atajo": null, "conjunto": "CONSUMO_MATERIAL", "tituloConjunto": "Material usado",
   "receta": { "conjunto": "CONSUMO_MATERIAL", "filtros": […], "agruparPor": ["obra", "material"], "metricas": […], "orden": […], "limite": 100 },
   "aplicado": [{ "nombre": "Obra", "valor": "contiene «Las Palmas»" }],
@@ -102,8 +105,9 @@ Devuelve: 200 {
 }
 `tipo` de columna: TEXTO, NUMERO, MONTO, PORCENTAJE, FECHA, BOOLEANO. Filas como texto (números con punto decimal y sin separador de miles, fechas ISO, booleanos true/false, nulos null); hasta 100 filas (`truncado` si hay más).
 Atajos: AVANCE_OBRAS, OBRAS_EN_RIESGO, CONSUMO_MATERIAL_MES, SALIDAS_SIN_STOCK, COBROS_VENCIDOS, COBROS_POR_VENCER, COBRADO_POR_OBRA, PLANILLAS_OBSERVADAS, PLANILLAS_APROBADAS, CONSUMOS_ATIPICOS_PENDIENTES (sin modelo de lenguaje para entender el pedido).
-Errores: 400 TEXTO_INVALIDO (largo fuera de 3 a 500) · 400 DATOS_INVALIDOS (ni `texto` ni `atajo`, los dos, atajo desconocido o `directorio` mal formado) · 422 INTENCION_NO_RECONOCIDA · 422 RECETA_INVALIDA (`errores[]` con `campo` = ruta en la receta y `mensaje` = la regla) · 429 DEMASIADAS_CONSULTAS (10 por minuto por usuario, con `Retry-After`) · 503 LLM_NO_DISPONIBLE (el modelo no responde al interpretar; nunca con un atajo) · 503 REPORTES_NO_DISPONIBLES (no responde `reportes_db` o `ia_db`, o la consulta pasa de 5 s) · 503 SERVICIO_NO_DISPONIBLE (Materiales con filtro de material, o sin directorio con filtro de cliente) · 504 TIEMPO_AGOTADO (más de 50 s dentro de IA) · 401 · 403
-Todos los casos, salvo 400, 401, 403 y 429, guardan `consulta_reporte`. El límite se cuenta antes de validar el cuerpo.
+Conversación (505): pregunta (ACLARACION, hasta 5 por conversación) cuando el pedido es vago o un nombre de obra, cliente o material coincide con varios o con ninguno (con parecidos); los seguimientos ajustan la última receta; autocorrección hasta 3 intentos; caché de recetas de 24 h por pedido y día.
+Errores: 400 TEXTO_INVALIDO (largo fuera de 3 a 500, o de 1 a 500 con conversación) · 400 DATOS_INVALIDOS (ni `texto` ni `atajo`, los dos, atajo desconocido o `directorio` mal formado) · 404 CONVERSACION_NO_ENCONTRADA (505: no existe, expiró a los 30 min sin uso o es de otro usuario) · 422 INTENCION_NO_RECONOCIDA (tras los intentos, sin receta ni pregunta posible) · 422 RECETA_INVALIDA (`errores[]` con `campo` = ruta en la receta y `mensaje` = la regla) · 429 DEMASIADAS_CONSULTAS (20 por minuto por usuario, cada turno cuenta; `IA_CONSULTAS_POR_MINUTO`; con `Retry-After`) · 503 LLM_NO_DISPONIBLE (el modelo no responde al interpretar; nunca con un atajo) · 503 REPORTES_NO_DISPONIBLES (no responde `reportes_db` o `ia_db`, o la consulta pasa de 5 s) · 503 SERVICIO_NO_DISPONIBLE (Materiales con filtro de material, o sin directorio con filtro de cliente) · 504 TIEMPO_AGOTADO (más de 50 s dentro de IA) · 401 · 403
+Todos los casos, salvo 400, 401, 403, 404, 429 y las aclaraciones, guardan `consulta_reporte` (505: con `conversacion_id`). El límite se cuenta antes de validar el cuerpo.
 
 ### GET /consultas-reporte?limite= · 503
 Servicio: IA · Quién llama: Gateway · Roles: `admin`, `gerente`
@@ -125,6 +129,8 @@ Errores: 401 · 403
 
 - Conjunto `COBROS` (201): el filtro `estado` admite `PENDIENTE`, `VENCIDO` y `PAGADO`, y la columna `pagado_en` («Fecha de pago», `FECHA`) muestra la fecha de pago (null si no está pagado). El filtro `venceEnDias` («Pendientes que vencen en los próximos días») solo cuenta los `PENDIENTE`: un `PAGADO` ya no está por vencer. «Cobrado» sigue siendo «cobros emitidos» (reglas del negocio). Igual en la herramienta MCP `consultar_reporte`.
 
+- Catálogo ampliado (505, también en `consultar_reporte`): `obra`, `cliente` y `material` con `CONTIENE` y `EN` (lista de 1 a 20 textos); `DESDE`/`HASTA` también numéricos (Obras: `avancePct`, `plazoPct`, `diferencia`, `riesgoPct`, `montoContrato`, `plazoDias`; Cobros: `monto`, `diasParaVencer`; Planillas: `neto`, `vecesObservada`, `avancePeriodoPct`; Movimientos: `cantidad`) y de fecha (Obras: `fechaInicio`; Cobros: `emitidoEn`, `venceEn`, `pagadoEn`); `nivelRiesgo` y `soloEnRiesgo` de la obra en Material usado, Movimientos, Cobros y Planillas; en Obras, columnas, medidas y filtros por obra de planillas observadas y aprobadas, cobros vencidos, monto vencido, monto por cobrar y salidas sin stock.
+
 - El modelo de lenguaje (Ollama o Anthropic, `IA_LLM_PROVEEDOR`) solo devuelve una **receta**; el código la valida contra el catálogo y arma la consulta con SQLAlchemy Core y valores enlazados (usuario `ia_reportes_lector`, `READ ONLY`, 5 s). Nunca ejecuta SQL del modelo.
 
 - Toda ruta salvo `/salud` exige token (`401 NO_AUTENTICADO`; `503 SERVICIO_NO_DISPONIBLE` si Keycloak no entrega el JWKS). Solo `admin`, `gerente` y `residente`; los demás roles (también `agente_ia`) reciben `403 SIN_PERMISO` en todas las rutas REST. Una ruta que no existe: `404 RUTA_NO_ENCONTRADA` (con token válido). **Excepción:** `/mcp` acepta **solo** `agente_ia` (501).
@@ -132,6 +138,8 @@ Errores: 401 · 403
 ### Agentes (502)
 
 Tres agentes fijos (`SEGUIMIENTO_OBRAS`, `CONTROL_MATERIALES`, `CONTROL_COBROS`) que corren en `ia-worker` a las 06:00 (La Paz) y a pedido. JSON en `camelCase`. Para `residente`: solo sus obras (`rpt_obra_resumen.residente_id`) y nunca `CONTROL_COBROS`. Detalle: `docs/specs/502-agentes-erp/diseno.md` de la carpeta general.
+
+Desde la 505: hasta 15 llamadas, 8 vueltas, 200 s de bucle y 4 minutos en total (`EJECUCION_TIEMPO_AGOTADO`); una llamada MCP que falla se reintenta una vez tras 1 s; el reporte tiene hasta 3 intentos (`REPORTE_INVALIDO`). Control de materiales empieza con `stock_obra {estados: [BAJO, JUSTO]}`, `consumos_atipicos {}` y el paso compuesto `consumo_vs_previsto` (`avance_obra` y `consumos_partida` del periodo actual para todas las obras; al modelo le llega solo el cruce: excesos de más de 20 % sobre lo previsto y salidas sin stock, hasta 30 de cada uno).
 
 ```
 ### GET /agentes · 502
@@ -242,8 +250,10 @@ Los nombres de los clientes no se piden a nadie: los trae el gateway en `directo
 
 | Proveedor (`IA_LLM_PROVEEDOR`) | Cliente | Para qué |
 |---|---|---|
-| `ollama` (por defecto) | `ollama` 0.6 (`AsyncClient(host=IA_OLLAMA_URL)`), modelo `IA_LLM_MODELO` (por defecto `qwen3:8b`) | Interpretar el pedido (receta, 20 s) y redactar el resumen (25 s) |
-| `anthropic` | `anthropic` 2 (`AsyncAnthropic`, Messages API), clave `IA_ANTHROPIC_API_KEY`, modelo `IA_LLM_MODELO` (por defecto `claude-sonnet-5-5`) | Ídem. Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic |
+| `ollama` (por defecto) | `ollama` 0.6 (`AsyncClient(host=IA_OLLAMA_URL)`), modelo `IA_LLM_MODELO` (por defecto `qwen3:8b`) | Interpretar el pedido (receta o pregunta, 15 s por intento) y redactar el resumen (25 s) |
+| `anthropic` | `anthropic` 2 (`AsyncAnthropic`, Messages API), clave `IA_ANTHROPIC_API_KEY`, modelo `IA_LLM_MODELO` (por defecto `claude-sonnet-5-5`) | Ídem. Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic. El mensaje de sistema va con `cache_control` (caché del proveedor, 505) |
+
+Fallas pasajeras (505): conexión, 429 y 5xx (también 529 en Anthropic) se reintentan hasta 2 veces, con esperas de 1 y 3 s recortadas al tiempo que quede (`ModeloConReintentos`); lo usan el constructor y los agentes.
 
 ## Consume (MCP, host de los agentes · 501)
 
@@ -252,7 +262,7 @@ El proceso `ia-worker` es el único cliente MCP. Token del cliente confidencial 
 | Servidor (variable) | Herramientas |
 |---|---|
 | Obras (`IA_OBRAS_MCP_URL`, por defecto `http://localhost:8081/mcp`) | `avance_obra {obraId?, periodo?}`, `buscar_diario {obraId, desde?, hasta?, texto?, limite?}`, `planillas_estado {obraId?, estados?, desdePeriodo?, limite?}` |
-| Materiales (`IA_MATERIALES_MCP_URL`, por defecto `http://localhost:8082/mcp`) | `stock_obra {obraId?, estados?, limite?}`, `consumos_partida {obraId, periodo, partidaId?}` |
+| Materiales (`IA_MATERIALES_MCP_URL`, por defecto `http://localhost:8082/mcp`) | `stock_obra {obraId?, estados?, limite?}`, `consumos_partida {obraId?, periodo, partidaId?}` (505: sin `obraId`, todas las obras) |
 | Finanzas (`IA_FINANZAS_MCP_URL`, por defecto `http://localhost:8083/mcp`) | `cobros_por_vencer {dias?, incluirVencidos?, obraId?}` |
 | IA (`IA_PROPIO_MCP_URL`, por defecto `http://localhost:8085/mcp`; en Compose `http://ia-api:8085/mcp`) | `consultar_reporte`, `riesgo_retraso`, `consumos_atipicos` (las de arriba) |
 
