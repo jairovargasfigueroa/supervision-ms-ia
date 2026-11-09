@@ -2,8 +2,10 @@
 
 - Herramientas `{name, description, input_schema, strict: true}`; los resultados vuelven como `tool_result` con el
   `tool_use_id`. Salida estructurada con `output_config.format = {type: "json_schema", schema}`.
-- Razonamiento `thinking: {type: "between_tools"}` y `output_config.effort` (`low` o `medium`); no se envía
-  `temperature`. Los bloques de la respuesta se guardan crudos para devolverlos tal cual en la vuelta siguiente.
+- Razonamiento: con Claude Sonnet 5.5, `thinking: {type: "between_tools"}` (solo ese modelo lo acepta); con los demás
+  (Haiku 5.5, Opus 5.5) no se envía `thinking` y el modelo razona en modo adaptativo. Siempre `output_config.effort`
+  (`low` o `medium`) y nunca `temperature`. Los bloques de la respuesta se guardan crudos para devolverlos tal cual en
+  la vuelta siguiente.
 - Con este proveedor, el texto del usuario y los datos delimitados salen a la API de Anthropic.
 - El SDK 2 usa `httpx2` (no `httpx`): el transporte simulado de las pruebas es el de `httpx2`.
 """
@@ -32,6 +34,12 @@ from ia.lenguaje.infraestructura.ollama import leer_objeto_json
 
 PROVEEDOR = "anthropic"
 _ESFUERZO = {"BAJO": "low", "MEDIO": "medium"}
+# Solo Claude Sonnet 5.5 acepta «between_tools»; Haiku 5.5 y Opus 5.5 responden 400 con él (se omite: adaptativo)
+_CON_BETWEEN_TOOLS = ("claude-sonnet-5-5",)
+
+
+def _razonamiento(modelo: str) -> dict[str, Any]:
+    return {"thinking": {"type": "between_tools"}} if modelo.startswith(_CON_BETWEEN_TOOLS) else {}
 
 
 class ModeloAnthropic:
@@ -109,7 +117,7 @@ class ModeloAnthropic:
                 "model": self._modelo,
                 "max_tokens": opciones.max_tokens,
                 "messages": _mensajes(mensajes),
-                "thinking": {"type": "between_tools"},
+                **_razonamiento(self._modelo),
                 "output_config": configuracion,
                 "timeout": opciones.tiempo_maximo_s,
                 **extra,
