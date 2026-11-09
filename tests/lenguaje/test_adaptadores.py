@@ -30,6 +30,7 @@ ESQUEMA: dict[str, Any] = {
         "resumen": {"type": "string", "minLength": 1, "maxLength": 1000},
         "filas": {"type": "integer", "minimum": 0, "maximum": 100},
         "lista": {"type": "array", "minItems": 2, "items": {"type": "object", "properties": {"x": {"type": "string"}}}},
+        "evidencia": {"type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": True, "items": {"type": "string"}},
     },
     "required": ["resumen"],
 }
@@ -44,6 +45,8 @@ def test_adaptar_esquema_anthropic_quita_restricciones_y_cierra_objetos() -> Non
     assert adaptado["properties"]["resumen"] == {"type": "string"}
     assert adaptado["properties"]["filas"] == {"type": "integer"}
     assert "minItems" not in adaptado["properties"]["lista"]
+    # 09/11/2026: la API rechaza «maxItems» y «uniqueItems» con 400; «minItems» 0 o 1 sí lo acepta
+    assert adaptado["properties"]["evidencia"] == {"type": "array", "minItems": 1, "items": {"type": "string"}}
     assert adaptado["properties"]["lista"]["items"]["additionalProperties"] is False
     assert ESQUEMA["properties"]["resumen"]["minLength"] == 1  # el original no cambia
     assert adaptar_esquema(ESQUEMA, "ollama") == ESQUEMA
@@ -156,7 +159,7 @@ async def test_ollama_vence_el_tiempo_maximo() -> None:
 CLAVE = "sk-ant-prueba-no-real"
 
 
-def _anthropic(responder: Any) -> tuple[ModeloAnthropic, list[httpx2.Request]]:
+def _anthropic(responder: Any, modelo: str = "claude-sonnet-5-5") -> tuple[ModeloAnthropic, list[httpx2.Request]]:
     pedidos: list[httpx2.Request] = []
 
     def manejar(pedido: httpx2.Request) -> httpx2.Response:
@@ -164,7 +167,7 @@ def _anthropic(responder: Any) -> tuple[ModeloAnthropic, list[httpx2.Request]]:
         pedidos.append(pedido)
         return responder(pedido)
 
-    return ModeloAnthropic(CLAVE, "claude-sonnet-5-5", transporte=httpx2.MockTransport(manejar)), pedidos
+    return ModeloAnthropic(CLAVE, modelo, transporte=httpx2.MockTransport(manejar)), pedidos
 
 
 def _respuesta_anthropic(bloques: list[dict[str, Any]], stop: str = "end_turn") -> httpx2.Response:
@@ -196,6 +199,19 @@ async def test_anthropic_generar_json_con_salida_estructurada_y_esfuerzo() -> No
     assert cuerpo["output_config"]["format"] == {"type": "json_schema", "schema": adaptar_esquema(ESQUEMA, "anthropic")}
     assert "temperature" not in cuerpo
     assert pedidos[0].headers["authorization"] == f"Bearer {CLAVE}"
+
+
+@pytest.mark.parametrize("nombre", ["claude-haiku-5-5", "claude-opus-5-5"])
+async def test_anthropic_otros_modelos_sin_between_tools(nombre: str) -> None:
+    # Solo Claude Sonnet 5.5 acepta «between_tools»; con los demás se omite «thinking» (modo adaptativo)
+    modelo, pedidos = _anthropic(
+        lambda _: _respuesta_anthropic([{"type": "text", "text": '{"resumen": "Bien."}'}]), modelo=nombre
+    )
+    await modelo.generar_json([Mensaje.usuario("pregunta")], ESQUEMA, OPCIONES)
+    cuerpo = json.loads(pedidos[0].content)
+    assert cuerpo["model"] == nombre
+    assert "thinking" not in cuerpo
+    assert cuerpo["output_config"]["effort"] == "low"
 
 
 async def test_anthropic_conversar_con_herramientas_estrictas_y_resultados() -> None:
