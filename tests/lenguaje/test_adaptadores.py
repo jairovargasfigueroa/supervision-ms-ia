@@ -30,6 +30,7 @@ ESQUEMA: dict[str, Any] = {
         "resumen": {"type": "string", "minLength": 1, "maxLength": 1000},
         "filas": {"type": "integer", "minimum": 0, "maximum": 100},
         "lista": {"type": "array", "minItems": 2, "items": {"type": "object", "properties": {"x": {"type": "string"}}}},
+        "evidencia": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string"}},
     },
     "required": ["resumen"],
 }
@@ -44,6 +45,8 @@ def test_adaptar_esquema_anthropic_quita_restricciones_y_cierra_objetos() -> Non
     assert adaptado["properties"]["resumen"] == {"type": "string"}
     assert adaptado["properties"]["filas"] == {"type": "integer"}
     assert "minItems" not in adaptado["properties"]["lista"]
+    # 09/11/2026: la API rechaza «maxItems» con 400; «minItems» 0 o 1 sí lo acepta
+    assert adaptado["properties"]["evidencia"] == {"type": "array", "minItems": 1, "items": {"type": "string"}}
     assert adaptado["properties"]["lista"]["items"]["additionalProperties"] is False
     assert ESQUEMA["properties"]["resumen"]["minLength"] == 1  # el original no cambia
     assert adaptar_esquema(ESQUEMA, "ollama") == ESQUEMA
